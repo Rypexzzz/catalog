@@ -1,0 +1,3 @@
+<?
+$sSectionName="_assets";
+?>

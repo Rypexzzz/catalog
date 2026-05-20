@@ -48,10 +48,21 @@ $selectedRoles = array_values(array_filter(array_map('intval', (array)($_GET['ro
         Итого: <span class="sc-toolbar__sum"><?= number_format($arResult['CURRENT_TOTAL'], 0, '', ' ') ?></span> ₽
       </div>
 
+      <button type="button" class="sc-btn sc-btn--primary sc-team-btn" id="open-team-modal" title="Команда проекта">
+        👥 Команда: <span class="sc-team-btn__count"><?= count($arResult['TEAM']) ?></span>
+      </button>
+
       <?php if ($arResult['IS_CATALOG_ADMIN']): ?>
         <button class="sc-btn sc-btn--accent" id="admin-add-service-btn" title="Добавить услугу">＋ Услуга</button>
       <?php endif; ?>
     </div>
+
+    <?php if (empty($arResult['TEAM'])): ?>
+    <div class="sc-team-hint" id="sc-team-hint">
+      <span>💡 Соберите команду проекта, чтобы видеть стоимость услуг с фактическими ставками.</span>
+      <button type="button" class="sc-btn sc-btn--ghost sc-btn--sm" data-open-team>Открыть</button>
+    </div>
+    <?php endif; ?>
 
         <!-- Корневые разделы (табы) -->
     <?php
@@ -145,54 +156,85 @@ $selectedRoles = array_values(array_filter(array_map('intval', (array)($_GET['ro
 
           <!-- Детали услуги -->
           <div class="sc-details" data-id="<?= $id ?>">
-            <table class="sc-detail-table">
-              <thead><tr>
-                <th class="sdt-result">Результат</th>
-                <th class="sdt-role">Роль</th>
-                <th class="sdt-grade">Категория</th>
-                <th class="sdt-rate">Ставка (₽/ч)</th>
-                <th class="sdt-hours">Часы</th>
-                <th class="sdt-cost">Стоимость (₽)</th>
-                <?php if ($isServiceRoot): ?>
-                  <th class="sdt-crit">Критерии уровней</th>
-                <?php endif; ?>
-              </tr></thead>
-              <tbody>
-                <?php $rowIdx = 0; foreach ($svc['ROLES'] as $r): ?>
-                  <tr data-rate="<?= $r['RATE'] ?>" data-std="<?= $r['STD_HOURS'] ?>">
-                    <td class="sdt-result"><?= htmlspecialcharsbx($r['RESULT']) ?></td>
-                    <td class="sdt-role"><?= htmlspecialcharsbx($r['ROLE_NAME']) ?></td>
-                    <td class="sdt-grade">
-                      <!-- ИСПРАВЛЕНО: select для КАЖДОЙ роли (не только первой) -->
-                      <select class="role-grade-select sc-input sc-input--select-sm"
-                              data-service="<?= $id ?>"
-                              data-role="<?= $r['ROLE_ID'] ?>">
-                        <?php foreach ($arResult['GRADES'] as $gradeId => $grade): ?>
-                          <option value="<?= $gradeId ?>"
-                                  data-rate="<?= $grade['RATE'] ?>"
-                                  <?= ($r['GRADE_ID'] == $gradeId) ? 'selected' : '' ?>>
-                            <?= htmlspecialcharsbx($grade['NAME']) ?>
-                          </option>
-                        <?php endforeach; ?>
-                      </select>
-                    </td>
-                    <td class="sdt-rate"><?= number_format($r['RATE'], 0, '', ' ') ?></td>
-                    <td class="sdt-hours">
-                      <input type="number" min="0" class="role-hours sc-input sc-input--number"
-                             data-role="<?= $r['ROLE_ID'] ?>"
-                             data-std="<?= $r['STD_HOURS'] ?>"
-                             value="<?= $r['HOURS'] ?>">
-                    </td>
-                    <td class="sdt-cost"><?= number_format($r['COST'], 0, '', ' ') ?></td>
-                    <?php if ($isServiceRoot && $rowIdx === 0): ?>
-                      <td class="sdt-crit" rowspan="<?= $roleCnt ?>">
-                        <?= $svc['MIN_CRITERIA'] !== '' ? nl2br(htmlspecialcharsbx($svc['MIN_CRITERIA'])) : '—' ?>
-                      </td>
+            <?php
+              $cartRoles = $arResult['CART_RAW']['services'][$id]['roles'] ?? [];
+              $teamMap   = [];
+              foreach ($arResult['TEAM'] as $m) $teamMap[$m['id']] = $m;
+            ?>
+            <div class="sc-roles">
+              <?php $rowIdx = 0; foreach ($svc['ROLES'] as $r):
+                $rid          = (int)$r['ROLE_ID'];
+                $assignments  = $cartRoles[$rid]['assignments'] ?? [];
+              ?>
+                <div class="sc-role-block" data-service="<?= $id ?>" data-role="<?= $rid ?>" data-std="<?= $r['STD_HOURS'] ?>">
+                  <div class="sc-role-block__head">
+                    <div class="sc-role-block__name">
+                      <strong><?= htmlspecialcharsbx($r['ROLE_NAME']) ?></strong>
+                      <span class="sc-role-block__std">· норматив <?= number_format($r['STD_HOURS'], 0, '', ' ') ?> ч</span>
+                    </div>
+                    <?php if (!empty($r['RESULT'])): ?>
+                      <div class="sc-role-block__result"><?= htmlspecialcharsbx($r['RESULT']) ?></div>
                     <?php endif; ?>
-                  </tr>
-                <?php $rowIdx++; endforeach; ?>
-              </tbody>
-            </table>
+                  </div>
+
+                  <?php if ($inCartFlg && !empty($assignments)): ?>
+                    <div class="sc-assignments">
+                      <?php foreach ($assignments as $a):
+                        $specId  = $a['specialistId'] ?? null;
+                        $spec    = $specId ? ($teamMap[$specId] ?? null) : null;
+                        $rate    = $spec ? (int)$spec['rate'] : 0;
+                        $hours   = (float)($a['hours'] ?? 0);
+                        $cost    = round($rate * $hours);
+                      ?>
+                        <div class="sc-assignment" data-assignment-id="<?= htmlspecialcharsbx($a['id']) ?>">
+                          <select class="sc-input sc-input--select-sm assignment-spec">
+                            <option value="">— Выбрать специалиста —</option>
+                            <?php foreach ($arResult['TEAM'] as $member): ?>
+                              <option value="<?= htmlspecialcharsbx($member['id']) ?>" data-rate="<?= $member['rate'] ?>" <?= $specId === $member['id'] ? 'selected' : '' ?>>
+                                <?= htmlspecialcharsbx($member['name']) ?><?= $member['gradeName'] ? ' · ' . htmlspecialcharsbx($member['gradeName']) : '' ?> (<?= number_format($member['rate'], 0, '', ' ') ?> ₽/ч)
+                              </option>
+                            <?php endforeach; ?>
+                          </select>
+                          <input type="number" min="0" step="0.5" class="sc-input sc-input--number assignment-hours" value="<?= $hours ?>">
+                          <span class="sc-assignment__cost"><?= number_format($cost, 0, '', ' ') ?> ₽</span>
+                          <button type="button" class="sc-btn-icon sc-btn-icon--danger assignment-remove" title="Убрать назначение">×</button>
+                        </div>
+                      <?php endforeach; ?>
+                      <button type="button" class="sc-btn sc-btn--ghost sc-btn--sm assignment-add">＋ ещё специалист</button>
+                    </div>
+                  <?php elseif ($inCartFlg): ?>
+                    <div class="sc-assignments">
+                      <div class="sc-assignment-empty">Нет назначений</div>
+                      <button type="button" class="sc-btn sc-btn--ghost sc-btn--sm assignment-add">＋ выбрать специалиста</button>
+                    </div>
+                  <?php else: ?>
+                    <div class="sc-role-block__hint">Добавьте услугу в корзину, чтобы назначить специалистов.</div>
+                  <?php endif; ?>
+                </div>
+              <?php $rowIdx++; endforeach; ?>
+            </div>
+
+            <?php if ($isServiceRoot && $svc['MIN_CRITERIA'] !== ''): ?>
+              <div class="sc-criteria">
+                <strong>Критерии уровней:</strong><br>
+                <?= nl2br(htmlspecialcharsbx($svc['MIN_CRITERIA'])) ?>
+              </div>
+            <?php endif; ?>
+
+            <?php if ($isServiceRoot): ?>
+              <div class="sc-level" data-service="<?= $id ?>">
+                <span class="sc-level__label">Уровень обслуживания:</span>
+                <div class="sc-level__options">
+                  <?php foreach (['low' => 'Низкий', 'medium' => 'Средний', 'high' => 'Высокий'] as $lv => $lbl): ?>
+                    <label class="sc-level__option <?= $svc['CURRENT_LEVEL'] === $lv ? 'is-active' : '' ?>">
+                      <input type="radio" name="level_<?= $id ?>" value="<?= $lv ?>"
+                             <?= $svc['CURRENT_LEVEL'] === $lv ? 'checked' : '' ?>>
+                      <span><?= $lbl ?></span>
+                    </label>
+                  <?php endforeach; ?>
+                </div>
+              </div>
+            <?php endif; ?>
 
             <?php if ($isServiceRoot): ?>
               <div class="sc-level" data-service="<?= $id ?>">
@@ -232,6 +274,65 @@ $selectedRoles = array_values(array_filter(array_map('intval', (array)($_GET['ro
     <div class="sc-modal__foot">
       <button type="button" class="sc-btn sc-btn--ghost" onclick="closeCatalogConfirmModal(false)">Отмена</button>
       <button type="button" class="sc-btn sc-btn--primary" onclick="closeCatalogConfirmModal(true)">Продолжить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка команды проекта -->
+<div id="team-modal" class="sc-modal">
+  <div class="sc-modal__box sc-modal__box--wide">
+    <div class="sc-modal__head">
+      <h3>Команда проекта</h3>
+      <button class="sc-modal__close" type="button" data-close-team>&times;</button>
+    </div>
+    <div class="sc-modal__body">
+      <div class="sc-team-list" id="team-list">
+        <?php if (empty($arResult['TEAM'])): ?>
+          <div class="sc-team-empty">Команда пока пуста. Добавьте специалистов ниже.</div>
+        <?php else: foreach ($arResult['TEAM'] as $m): ?>
+          <div class="sc-team-row" data-spec-id="<?= htmlspecialcharsbx($m['id']) ?>">
+            <div class="sc-team-row__user">
+              <?php if ($m['photo']): ?>
+                <img src="<?= htmlspecialcharsbx($m['photo']) ?>" alt="" class="sc-team-row__avatar">
+              <?php else: ?>
+                <span class="sc-team-row__avatar sc-team-row__avatar--ph"><?= mb_substr($m['name'], 0, 1) ?></span>
+              <?php endif; ?>
+              <div class="sc-team-row__name"><?= htmlspecialcharsbx($m['name']) ?></div>
+            </div>
+            <select class="sc-input sc-input--select-sm sc-team-row__grade">
+              <option value="">— грейд —</option>
+              <?php foreach ($arResult['GRADES'] as $gid => $g): ?>
+                <option value="<?= $gid ?>" <?= ($m['gradeId'] == $gid) ? 'selected' : '' ?>><?= htmlspecialcharsbx($g['NAME']) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <input type="number" min="0" class="sc-input sc-input--number sc-team-row__rate" value="<?= (int)$m['rate'] ?>" placeholder="Ставка ₽/ч">
+            <button type="button" class="sc-btn-icon sc-btn-icon--danger sc-team-row__remove" title="Удалить из команды">×</button>
+          </div>
+        <?php endforeach; endif; ?>
+      </div>
+
+      <div class="sc-team-add">
+        <div class="sc-team-add__title">Добавить специалиста</div>
+        <div class="sc-team-add__row">
+          <div class="sc-team-add__user">
+            <input type="text" id="team-user-search" class="sc-input" placeholder="Поиск сотрудника…" autocomplete="off">
+            <div class="sc-team-add__results" id="team-user-results"></div>
+            <input type="hidden" id="team-user-id" value="">
+            <div class="sc-team-add__selected" id="team-user-selected" style="display:none"></div>
+          </div>
+          <select class="sc-input sc-input--select-sm" id="team-grade-select">
+            <option value="">— грейд —</option>
+            <?php foreach ($arResult['GRADES'] as $gid => $g): ?>
+              <option value="<?= $gid ?>"><?= htmlspecialcharsbx($g['NAME']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <input type="number" min="0" id="team-rate-input" class="sc-input sc-input--number" placeholder="Ставка ₽/ч">
+          <button type="button" class="sc-btn sc-btn--primary sc-btn--sm" id="team-add-btn">＋ Добавить</button>
+        </div>
+      </div>
+    </div>
+    <div class="sc-modal__foot">
+      <button class="sc-btn sc-btn--primary" type="button" data-close-team>Готово</button>
     </div>
   </div>
 </div>

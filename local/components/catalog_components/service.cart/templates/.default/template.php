@@ -19,6 +19,19 @@ $lockConfig = $arResult['LOCK_CONFIG'] ?? [
 <div class="cart">
   <section class="cart-main">
     <div class="cart-scroll">
+      <div class="cart-toolbar">
+        <button type="button" class="sc-btn sc-btn--primary sc-team-btn" id="open-team-modal" title="Команда проекта">
+          👥 Команда: <span class="sc-team-btn__count"><?= count($arResult['TEAM']) ?></span>
+        </button>
+      </div>
+
+      <?php if (empty($arResult['TEAM']) && !empty($arResult['ROOTS'])): ?>
+      <div class="sc-team-hint">
+        <span>💡 Соберите команду проекта, чтобы видеть стоимость услуг с фактическими ставками.</span>
+        <button type="button" class="sc-btn sc-btn--ghost sc-btn--sm" data-open-team>Открыть</button>
+      </div>
+      <?php endif; ?>
+
       <?php if ($arResult['MODEL_CONFLICT']): ?>
         <div class="cart-alert cart-alert--danger">
           <strong>⚠ Конфликт моделей!</strong> В корзине есть услуги из каскадной и гибкой моделей одновременно. Удалите лишнее.
@@ -77,30 +90,59 @@ $lockConfig = $arResult['LOCK_CONFIG'] ?? [
                     </div>
                   <?php endif; ?>
 
-                  <table class="cart-table">
-                    <thead><tr>
-                      <th>Результат</th>
-                      <th>Роль</th>
-                      <th class="cart-table__center">Категория</th>
-                      <th class="cart-table__center">Ставка ₽/ч</th>
-                      <th class="cart-table__center">Часы</th>
-                      <th class="cart-table__center">Стоимость, ₽</th>
-                    </tr></thead>
-                    <tbody>
-                      <?php foreach ($svc['ROLES'] as $rid => $r):
-                        $roleCost = ($r['RATE'] ?? 0) * ($r['HOURS'] ?? 0) * $levelCoeff;
-                      ?>
-                        <tr data-service="<?= $svc['ID'] ?>" data-role="<?= $rid ?>" data-grade-id="<?= (int)($r['GRADE_ID'] ?? 0) ?>" data-hours="<?= (int)($r['HOURS'] ?? 0) ?>" data-rate="<?= (float)($r['RATE'] ?? 0) ?>">
-                          <td><?= htmlspecialcharsbx($r['RESULT']) ?></td>
-                          <td><?= htmlspecialcharsbx($r['ROLE_NAME']) ?></td>
-                          <td class="cart-table__grade cart-table__center"><?= htmlspecialcharsbx($r['GRADE_NAME'] ?? '') ?></td>
-                          <td class="cart-table__mono cart-table__center"><?= number_format($r['RATE'] ?? 0, 0, '', ' ') ?></td>
-                          <td class="cart-table__mono cart-table__center"><?= (int)($r['HOURS'] ?? 0) ?></td>
-                          <td class="cart-table__mono cart-table__cost cart-table__center"><?= number_format($roleCost, 0, '', ' ') ?></td>
-                        </tr>
-                      <?php endforeach; ?>
-                    </tbody>
-                  </table>
+                  <?php
+                    $cartRoles = $arResult['CART_RAW']['services'][$svc['ID']]['roles'] ?? [];
+                    $teamMap   = [];
+                    foreach ($arResult['TEAM'] as $m) $teamMap[$m['id']] = $m;
+                  ?>
+                  <div class="sc-roles">
+                    <?php foreach ($svc['ROLES'] as $rid => $r):
+                      $assignments = $cartRoles[$rid]['assignments'] ?? [];
+                    ?>
+                      <div class="sc-role-block" data-service="<?= $svc['ID'] ?>" data-role="<?= $rid ?>" data-std="<?= (float)($r['STD_HOURS'] ?? 0) ?>">
+                        <div class="sc-role-block__head">
+                          <div class="sc-role-block__name">
+                            <strong><?= htmlspecialcharsbx($r['ROLE_NAME']) ?></strong>
+                            <span class="sc-role-block__std">· норматив <?= number_format($r['STD_HOURS'] ?? 0, 0, '', ' ') ?> ч</span>
+                          </div>
+                          <?php if (!empty($r['RESULT'])): ?>
+                            <div class="sc-role-block__result"><?= htmlspecialcharsbx($r['RESULT']) ?></div>
+                          <?php endif; ?>
+                        </div>
+                        <?php if (!empty($assignments)): ?>
+                          <div class="sc-assignments">
+                            <?php foreach ($assignments as $a):
+                              $specId = $a['specialistId'] ?? null;
+                              $spec   = $specId ? ($teamMap[$specId] ?? null) : null;
+                              $rate   = $spec ? (int)$spec['rate'] : 0;
+                              $hours  = (float)($a['hours'] ?? 0);
+                              $cost   = round($rate * $hours);
+                            ?>
+                              <div class="sc-assignment" data-assignment-id="<?= htmlspecialcharsbx($a['id']) ?>">
+                                <select class="sc-input sc-input--select-sm assignment-spec">
+                                  <option value="">— Выбрать специалиста —</option>
+                                  <?php foreach ($arResult['TEAM'] as $member): ?>
+                                    <option value="<?= htmlspecialcharsbx($member['id']) ?>" data-rate="<?= $member['rate'] ?>" <?= $specId === $member['id'] ? 'selected' : '' ?>>
+                                      <?= htmlspecialcharsbx($member['name']) ?><?= $member['gradeName'] ? ' · ' . htmlspecialcharsbx($member['gradeName']) : '' ?> (<?= number_format($member['rate'], 0, '', ' ') ?> ₽/ч)
+                                    </option>
+                                  <?php endforeach; ?>
+                                </select>
+                                <input type="number" min="0" step="0.5" class="sc-input sc-input--number assignment-hours" value="<?= $hours ?>">
+                                <span class="sc-assignment__cost"><?= number_format($cost, 0, '', ' ') ?> ₽</span>
+                                <button type="button" class="sc-btn-icon sc-btn-icon--danger assignment-remove" title="Убрать назначение">×</button>
+                              </div>
+                            <?php endforeach; ?>
+                            <button type="button" class="sc-btn sc-btn--ghost sc-btn--sm assignment-add">＋ ещё специалист</button>
+                          </div>
+                        <?php else: ?>
+                          <div class="sc-assignments">
+                            <div class="sc-assignment-empty">Нет назначений</div>
+                            <button type="button" class="sc-btn sc-btn--ghost sc-btn--sm assignment-add">＋ выбрать специалиста</button>
+                          </div>
+                        <?php endif; ?>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
                 </div>
               </article>
             <?php endforeach; ?>
@@ -388,6 +430,65 @@ $lockConfig = $arResult['LOCK_CONFIG'] ?? [
     <div class="sc-modal__foot">
       <button id="cart-confirm-cancel" class="sc-btn sc-btn--ghost" data-close-cancel>Отмена</button>
       <button id="cart-confirm-ok" class="sc-btn sc-btn--primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка команды проекта -->
+<div id="team-modal" class="sc-modal">
+  <div class="sc-modal__box sc-modal__box--wide">
+    <div class="sc-modal__head">
+      <h3>Команда проекта</h3>
+      <button class="sc-modal__close" type="button" data-close-team>&times;</button>
+    </div>
+    <div class="sc-modal__body">
+      <div class="sc-team-list" id="team-list">
+        <?php if (empty($arResult['TEAM'])): ?>
+          <div class="sc-team-empty">Команда пока пуста. Добавьте специалистов ниже.</div>
+        <?php else: foreach ($arResult['TEAM'] as $m): ?>
+          <div class="sc-team-row" data-spec-id="<?= htmlspecialcharsbx($m['id']) ?>">
+            <div class="sc-team-row__user">
+              <?php if ($m['photo']): ?>
+                <img src="<?= htmlspecialcharsbx($m['photo']) ?>" alt="" class="sc-team-row__avatar">
+              <?php else: ?>
+                <span class="sc-team-row__avatar sc-team-row__avatar--ph"><?= mb_substr($m['name'], 0, 1) ?></span>
+              <?php endif; ?>
+              <div class="sc-team-row__name"><?= htmlspecialcharsbx($m['name']) ?></div>
+            </div>
+            <select class="sc-input sc-input--select-sm sc-team-row__grade">
+              <option value="">— грейд —</option>
+              <?php foreach ($arResult['GRADES'] as $gid => $g): ?>
+                <option value="<?= $gid ?>" <?= ($m['gradeId'] == $gid) ? 'selected' : '' ?>><?= htmlspecialcharsbx($g['NAME']) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <input type="number" min="0" class="sc-input sc-input--number sc-team-row__rate" value="<?= (int)$m['rate'] ?>" placeholder="Ставка ₽/ч">
+            <button type="button" class="sc-btn-icon sc-btn-icon--danger sc-team-row__remove" title="Удалить из команды">×</button>
+          </div>
+        <?php endforeach; endif; ?>
+      </div>
+
+      <div class="sc-team-add">
+        <div class="sc-team-add__title">Добавить специалиста</div>
+        <div class="sc-team-add__row">
+          <div class="sc-team-add__user">
+            <input type="text" id="team-user-search" class="sc-input" placeholder="Поиск сотрудника…" autocomplete="off">
+            <div class="sc-team-add__results" id="team-user-results"></div>
+            <input type="hidden" id="team-user-id" value="">
+            <div class="sc-team-add__selected" id="team-user-selected" style="display:none"></div>
+          </div>
+          <select class="sc-input sc-input--select-sm" id="team-grade-select">
+            <option value="">— грейд —</option>
+            <?php foreach ($arResult['GRADES'] as $gid => $g): ?>
+              <option value="<?= $gid ?>"><?= htmlspecialcharsbx($g['NAME']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <input type="number" min="0" id="team-rate-input" class="sc-input sc-input--number" placeholder="Ставка ₽/ч">
+          <button type="button" class="sc-btn sc-btn--primary sc-btn--sm" id="team-add-btn">＋ Добавить</button>
+        </div>
+      </div>
+    </div>
+    <div class="sc-modal__foot">
+      <button class="sc-btn sc-btn--primary" type="button" data-close-team>Готово</button>
     </div>
   </div>
 </div>

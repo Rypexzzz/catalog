@@ -200,6 +200,41 @@ if ($req->isPost() && $req['ajax'] === 'Y') {
                 ? ['success' => 1, 'total' => $cart->getTotal()]
                 : ['success' => 0, 'error' => 'Назначение не найдено'];
             break;
+
+        case 'searchUsers':
+            $search = trim($req['search'] ?? '');
+            $users  = [];
+            if (mb_strlen($search) >= 2) {
+                $rs = \Bitrix\Main\UserTable::getList([
+                    'select' => ['ID', 'NAME', 'LAST_NAME', 'PERSONAL_PHOTO'],
+                    'filter' => [
+                        '=ACTIVE' => 'Y',
+                        [
+                            'LOGIC' => 'OR',
+                            '%NAME'      => $search,
+                            '%LAST_NAME' => $search,
+                            '%LOGIN'     => $search,
+                            '%EMAIL'     => $search,
+                        ],
+                    ],
+                    'order' => ['LAST_NAME' => 'ASC'],
+                    'limit' => 20,
+                ]);
+                while ($user = $rs->fetch()) {
+                    $photo = '';
+                    if ($user['PERSONAL_PHOTO']) {
+                        $file = \CFile::GetFileArray($user['PERSONAL_PHOTO']);
+                        if ($file) $photo = $file['SRC'];
+                    }
+                    $users[] = [
+                        'id'     => (int)$user['ID'],
+                        'name'   => trim($user['NAME'] . ' ' . $user['LAST_NAME']),
+                        'avatar' => $photo,
+                    ];
+                }
+            }
+            $response = ['success' => 1, 'users' => $users];
+            break;
     }
 
     $APPLICATION->RestartBuffer();
@@ -318,5 +353,45 @@ if ($hasSubsecs) {
 }
 
 $arResult['CURRENT_TOTAL'] = $cart->getTotal();
+
+// Команда проекта — подтягиваем имена/фото из CUser для рендера
+$team       = array_values($cart->getTeam());
+$teamView   = [];
+$bitrixIds  = array_filter(array_map(fn($m) => (int)($m['bitrixUserId'] ?? 0), $team));
+$userInfo   = [];
+if (!empty($bitrixIds)) {
+    $rsU = \CUser::GetList(
+        'ID', 'ASC',
+        ['ID' => implode('|', array_unique($bitrixIds))],
+        ['SELECT' => ['ID', 'NAME', 'LAST_NAME', 'PERSONAL_PHOTO']]
+    );
+    while ($u = $rsU->Fetch()) {
+        $photo = '';
+        if ($u['PERSONAL_PHOTO']) {
+            $f = \CFile::GetFileArray($u['PERSONAL_PHOTO']);
+            if ($f) $photo = $f['SRC'];
+        }
+        $userInfo[(int)$u['ID']] = [
+            'name'  => trim($u['NAME'] . ' ' . $u['LAST_NAME']) ?: $u['LOGIN'],
+            'photo' => $photo,
+        ];
+    }
+}
+foreach ($team as $member) {
+    $info = $userInfo[(int)$member['bitrixUserId']] ?? ['name' => 'Пользователь #' . $member['bitrixUserId'], 'photo' => ''];
+    $gradeId   = $member['gradeId'] ?? null;
+    $gradeName = $gradeId && isset($GRADES[$gradeId]) ? $GRADES[$gradeId]['NAME'] : null;
+    $teamView[] = [
+        'id'           => $member['id'],
+        'bitrixUserId' => (int)$member['bitrixUserId'],
+        'rate'         => (int)$member['rate'],
+        'gradeId'      => $gradeId,
+        'gradeName'    => $gradeName,
+        'name'         => $info['name'],
+        'photo'        => $info['photo'],
+    ];
+}
+$arResult['TEAM']      = $teamView;
+$arResult['CART_RAW']  = $cart->getRaw();
 
 $this->includeComponentTemplate();

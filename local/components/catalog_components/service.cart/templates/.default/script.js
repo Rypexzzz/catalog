@@ -175,19 +175,32 @@ if (window.__SERVICE_CART_JS__) {
             const cards = $$('.cart-card').map((card) => {
                 const sid = String(card.dataset.id || '');
                 const level = String(card.dataset.level || '');
-                const rows = $$('tr[data-role]', card)
-                    .map((tr) => {
-                        const role = String(tr.dataset.role || '');
-                        const grade = String(tr.dataset.gradeId || '');
-                        const hours = String(tr.dataset.hours || '');
-                        const rate = String(tr.dataset.rate || '');
-                        return [role, grade, hours, rate].join(':');
+                const roles = $$('.sc-role-block', card)
+                    .map((rb) => {
+                        const roleId = String(rb.dataset.role || '');
+                        const ass = $$('.sc-assignment', rb)
+                            .map((a) => {
+                                const aid  = String(a.dataset.assignmentId || '');
+                                const spec = String(a.querySelector('.assignment-spec')?.value || '');
+                                const hrs  = String(a.querySelector('.assignment-hours')?.value || '');
+                                return [aid, spec, hrs].join(':');
+                            })
+                            .sort()
+                            .join(',');
+                        return roleId + '=' + ass;
                     })
                     .sort()
                     .join('|');
-                return [sid, level, rows].join('#');
+                return [sid, level, roles].join('#');
             }).sort();
-            return cards.join('~');
+            // также подмешиваем команду, чтобы изменение ставок тоже считалось dirty
+            const team = $$('#team-list .sc-team-row').map((r) => {
+                const id   = String(r.dataset.specId || '');
+                const rate = String(r.querySelector('.sc-team-row__rate')?.value || '');
+                const grd  = String(r.querySelector('.sc-team-row__grade')?.value || '');
+                return [id, rate, grd].join(':');
+            }).sort().join(';');
+            return cards.join('~') + '@@' + team;
         };
 
         const storageKeys = {
@@ -290,7 +303,7 @@ if (window.__SERVICE_CART_JS__) {
                 childList: true,
                 characterData: true,
                 attributes: true,
-                attributeFilter: ['data-grade-id', 'data-hours', 'data-rate', 'data-level', 'class'],
+                attributeFilter: ['data-level', 'value', 'class'],
             });
         };
 
@@ -1126,5 +1139,249 @@ if (window.__SERVICE_CART_JS__) {
 
         restoreEditState();
         refreshDraftsUI();
+
+        /* ==============================================================
+           НАЗНАЧЕНИЯ И КОМАНДА (phase 3)
+           ============================================================== */
+
+        const fmtCost = (n) => Math.round(n).toLocaleString('ru-RU');
+
+        const getCardLevelCoeff = (card) => {
+            const lv = String(card?.dataset.level || 'medium');
+            return lv === 'high' ? 1.3 : lv === 'low' ? 0.77 : 1.0;
+        };
+
+        const recalcCardSum = (card) => {
+            if (!card) return;
+            let base = 0;
+            $$('.sc-assignment', card).forEach((a) => {
+                const rate  = parseFloat(a.querySelector('.assignment-spec')?.selectedOptions[0]?.dataset.rate) || 0;
+                const hours = parseFloat(a.querySelector('.assignment-hours')?.value) || 0;
+                base += rate * hours;
+            });
+            const sum = Math.round(base * getCardLevelCoeff(card));
+            const el = card.querySelector('.cart-card__sum-val');
+            if (el) el.textContent = fmtCost(sum);
+        };
+
+        const updateAssignmentCostCell = (assignmentEl) => {
+            const rate  = parseFloat(assignmentEl.querySelector('.assignment-spec')?.selectedOptions[0]?.dataset.rate) || 0;
+            const hours = parseFloat(assignmentEl.querySelector('.assignment-hours')?.value) || 0;
+            const cell  = assignmentEl.querySelector('.sc-assignment__cost');
+            if (cell) cell.textContent = fmtCost(rate * hours) + ' ₽';
+        };
+
+        document.addEventListener('change', async (e) => {
+            const isSpec = e.target.matches('.assignment-spec');
+            const isHrs  = e.target.matches('.assignment-hours');
+            if (!isSpec && !isHrs) return;
+
+            const assignmentEl = e.target.closest('.sc-assignment');
+            const roleBlock    = e.target.closest('.sc-role-block');
+            const card         = e.target.closest('.cart-card');
+            const serviceId    = roleBlock?.dataset.service;
+            const roleId       = roleBlock?.dataset.role;
+            const assignmentId = assignmentEl?.dataset.assignmentId;
+            if (!serviceId || !roleId || !assignmentId) return;
+
+            updateAssignmentCostCell(assignmentEl);
+            recalcCardSum(card);
+
+            const payload = { serviceId, roleId, assignmentId };
+            if (isSpec) payload.specialistId = e.target.value;
+            if (isHrs)  payload.hours        = Math.max(0, parseFloat(e.target.value) || 0);
+
+            const d = await ajax('updateAssignment', payload);
+            if (d.success) {
+                if (typeof d.total !== 'undefined') {
+                    const gv = $('#grand-val');
+                    if (gv) gv.textContent = fmtCost(d.total);
+                }
+                markDirty();
+            } else {
+                showAlert(d.error || 'Не удалось сохранить назначение');
+            }
+        });
+
+        document.addEventListener('click', async (e) => {
+            const addBtn = e.target.closest('.assignment-add');
+            if (addBtn) {
+                const roleBlock = addBtn.closest('.sc-role-block');
+                const serviceId = roleBlock?.dataset.service;
+                const roleId    = roleBlock?.dataset.role;
+                if (!serviceId || !roleId) return;
+                addBtn.disabled = true;
+                const d = await ajax('addAssignment', { serviceId, roleId });
+                addBtn.disabled = false;
+                if (d.success) {
+                    // простой путь — перезагружаем, чтобы заново отрендерить
+                    location.reload();
+                } else {
+                    showAlert(d.error || 'Не удалось добавить назначение');
+                }
+                return;
+            }
+
+            const rmBtn = e.target.closest('.assignment-remove');
+            if (rmBtn) {
+                const assignmentEl = rmBtn.closest('.sc-assignment');
+                const roleBlock    = rmBtn.closest('.sc-role-block');
+                const card         = rmBtn.closest('.cart-card');
+                const serviceId    = roleBlock?.dataset.service;
+                const roleId       = roleBlock?.dataset.role;
+                const assignmentId = assignmentEl?.dataset.assignmentId;
+                if (!serviceId || !roleId || !assignmentId) return;
+                rmBtn.disabled = true;
+                const d = await ajax('removeAssignment', { serviceId, roleId, assignmentId });
+                if (d.success) {
+                    assignmentEl.remove();
+                    recalcCardSum(card);
+                    const gv = $('#grand-val');
+                    if (gv && typeof d.total !== 'undefined') gv.textContent = fmtCost(d.total);
+                    markDirty();
+                } else {
+                    showAlert(d.error || 'Не удалось убрать назначение');
+                    rmBtn.disabled = false;
+                }
+                return;
+            }
+        });
+
+        /* модалка команды */
+
+        const teamModal = $('#team-modal');
+        const openTeamModal = () => teamModal?.classList.add('is-open');
+        const closeTeamModal = () => teamModal?.classList.remove('is-open');
+
+        $('#open-team-modal')?.addEventListener('click', openTeamModal);
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('[data-open-team]')) { e.preventDefault(); openTeamModal(); }
+            if (e.target.closest('[data-close-team]')) { e.preventDefault(); closeTeamModal(); }
+        });
+
+        let searchTimer = null;
+        const teamSearchInput   = $('#team-user-search');
+        const teamSearchResults = $('#team-user-results');
+        const teamUserIdInput   = $('#team-user-id');
+        const teamUserSelected  = $('#team-user-selected');
+
+        const renderUserResults = (users) => {
+            if (!teamSearchResults) return;
+            teamSearchResults.innerHTML = '';
+            if (!users.length) {
+                teamSearchResults.innerHTML = '<div class="sc-team-add__no-results">Ничего не найдено</div>';
+                return;
+            }
+            users.forEach((u) => {
+                const row = document.createElement('div');
+                row.className = 'sc-team-add__user-row';
+                row.dataset.userId = u.id;
+                row.innerHTML = `
+                    ${u.avatar ? `<img src="${u.avatar}" class="sc-team-row__avatar">` : `<span class="sc-team-row__avatar sc-team-row__avatar--ph">${BX.util.htmlspecialchars(u.name.charAt(0))}</span>`}
+                    <span>${BX.util.htmlspecialchars(u.name)}</span>
+                `;
+                row.addEventListener('click', () => {
+                    if (teamUserIdInput) teamUserIdInput.value = u.id;
+                    if (teamUserSelected) {
+                        teamUserSelected.style.display = '';
+                        teamUserSelected.innerHTML = row.innerHTML + ` <button type="button" class="sc-btn-icon" data-clear-user>×</button>`;
+                    }
+                    if (teamSearchInput) { teamSearchInput.value = ''; teamSearchInput.style.display = 'none'; }
+                    teamSearchResults.innerHTML = '';
+                });
+                teamSearchResults.appendChild(row);
+            });
+        };
+
+        teamSearchInput?.addEventListener('input', () => {
+            const q = teamSearchInput.value.trim();
+            if (searchTimer) clearTimeout(searchTimer);
+            if (q.length < 2) { teamSearchResults.innerHTML = ''; return; }
+            searchTimer = setTimeout(async () => {
+                const d = await ajax('searchUsers', { search: q });
+                if (d.success) renderUserResults(d.users || []);
+            }, 250);
+        });
+
+        teamUserSelected?.addEventListener('click', (e) => {
+            if (e.target.closest('[data-clear-user]')) {
+                if (teamUserIdInput) teamUserIdInput.value = '';
+                teamUserSelected.style.display = 'none';
+                teamUserSelected.innerHTML = '';
+                if (teamSearchInput) { teamSearchInput.style.display = ''; teamSearchInput.focus(); }
+            }
+        });
+
+        $('#team-add-btn')?.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const bitrixUserId = parseInt(teamUserIdInput?.value || '0', 10);
+            const rate         = parseInt($('#team-rate-input')?.value || '0', 10);
+            const gradeId      = parseInt($('#team-grade-select')?.value || '0', 10);
+
+            if (!bitrixUserId) { showAlert('Выберите сотрудника из списка'); return; }
+            if (!rate || rate < 0) { showAlert('Укажите ставку ₽/час'); return; }
+
+            const d = await ajax('addTeamMember', { bitrixUserId, rate, gradeId: gradeId || '' });
+            if (d.success) { location.reload(); }
+            else { showAlert(d.error || 'Не удалось добавить специалиста'); }
+        });
+
+        $('#team-list')?.addEventListener('change', async (e) => {
+            const row = e.target.closest('.sc-team-row');
+            if (!row) return;
+            const specialistId = row.dataset.specId;
+            if (e.target.matches('.sc-team-row__rate')) {
+                const rate = Math.max(0, parseInt(e.target.value, 10) || 0);
+                const d = await ajax('updateTeamMember', { specialistId, rate });
+                if (d.success) {
+                    const gv = $('#grand-val');
+                    if (gv && typeof d.total !== 'undefined') gv.textContent = fmtCost(d.total);
+                    markDirty();
+                    // карточки услуг тоже надо пересчитать — но проще перерисовать
+                    setTimeout(() => location.reload(), 200);
+                } else {
+                    showAlert(d.error || 'Не удалось сохранить');
+                }
+            } else if (e.target.matches('.sc-team-row__grade')) {
+                const gradeId = e.target.value || '';
+                const d = await ajax('updateTeamMember', { specialistId, gradeId });
+                if (!d.success) showAlert(d.error || 'Не удалось сохранить');
+            }
+        });
+
+        $('#team-list')?.addEventListener('click', async (e) => {
+            const rm = e.target.closest('.sc-team-row__remove');
+            if (!rm) return;
+            const row = rm.closest('.sc-team-row');
+            const specialistId = row.dataset.specId;
+
+            showConfirm('Убрать специалиста из команды? Все его назначения будут сняты.', async (ok) => {
+                if (!ok) return;
+                const d = await ajax('removeTeamMember', { specialistId });
+                if (d.success) { location.reload(); }
+                else { showAlert(d.error || 'Не удалось удалить'); }
+            });
+        });
+
+        /* уровень обслуживания (radio) */
+        document.addEventListener('change', async (e) => {
+            if (!e.target.matches('.sc-level input[type="radio"]')) return;
+            const radio = e.target;
+            const serviceId = radio.closest('.sc-level').dataset.service;
+            const level     = radio.value;
+            const card      = $(`.cart-card[data-id="${serviceId}"]`);
+            if (card) card.dataset.level = level;
+            recalcCardSum(card);
+
+            const d = await ajax('updateServiceLevel', { serviceId, level });
+            if (d.success) {
+                const gv = $('#grand-val');
+                if (gv && typeof d.total !== 'undefined') gv.textContent = fmtCost(d.total);
+                markDirty();
+            } else {
+                showAlert(d.error || 'Не удалось обновить уровень');
+            }
+        });
+
     });
 }

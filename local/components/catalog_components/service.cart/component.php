@@ -298,6 +298,81 @@ if ($req->isPost() && $req['ajax'] === 'Y') {
             }
             $response = $drafts->save($userId, trim($req['draft_name'] ?? ''), $cart->getRaw());
             break;
+
+        case 'addTeamMember':
+            $bitrixUserId = (int)($req['bitrixUserId'] ?? 0);
+            $rate         = (int)($req['rate'] ?? 0);
+            $gradeId      = ($req['gradeId'] ?? null) ? (int)$req['gradeId'] : null;
+            $result = $cart->addTeamMember($bitrixUserId, $rate, $gradeId);
+            $response = $result['success']
+                ? ['success' => 1, 'specialist' => $result['specialist'], 'total' => $cart->getTotal()]
+                : ['success' => 0, 'error' => $result['error']];
+            break;
+
+        case 'updateTeamMember':
+            $specialistId = (string)($req['specialistId'] ?? '');
+            $data = [];
+            $raw = $req->toArray();
+            if (array_key_exists('rate', $raw))    $data['rate']    = (int)$raw['rate'];
+            if (array_key_exists('gradeId', $raw)) $data['gradeId'] = $raw['gradeId'];
+            $updated = $cart->updateTeamMember($specialistId, $data);
+            $response = $updated
+                ? ['success' => 1, 'specialist' => $updated, 'total' => $cart->getTotal()]
+                : ['success' => 0, 'error' => 'Специалист не найден'];
+            break;
+
+        case 'removeTeamMember':
+            $specialistId = (string)($req['specialistId'] ?? '');
+            $info = $cart->removeTeamMember($specialistId);
+            $response = $info['removed']
+                ? ['success' => 1] + $info + ['total' => $cart->getTotal()]
+                : ['success' => 0, 'error' => 'Специалист не найден'];
+            break;
+
+        case 'addAssignment':
+            $roleId       = (int)($req['roleId'] ?? 0);
+            $specialistId = ($req['specialistId'] ?? null) !== null && $req['specialistId'] !== ''
+                ? (string)$req['specialistId'] : null;
+            $hours        = ($req['hours'] ?? null) !== null && $req['hours'] !== ''
+                ? (float)$req['hours'] : null;
+            $assignment = $cart->addAssignment($sid, $roleId, $specialistId, $hours);
+            $response = $assignment
+                ? ['success' => 1, 'assignment' => $assignment, 'total' => $cart->getTotal()]
+                : ['success' => 0, 'error' => 'Не удалось добавить назначение'];
+            break;
+
+        case 'updateAssignment':
+            $roleId       = (int)($req['roleId'] ?? 0);
+            $assignmentId = (string)($req['assignmentId'] ?? '');
+            $data = [];
+            $raw  = $req->toArray();
+            if (array_key_exists('specialistId', $raw)) {
+                $data['specialistId'] = $raw['specialistId'] === '' ? null : (string)$raw['specialistId'];
+            }
+            if (array_key_exists('hours', $raw)) {
+                $data['hours'] = (float)$raw['hours'];
+            }
+            $updated = $cart->updateAssignment($sid, $roleId, $assignmentId, $data);
+            $response = $updated
+                ? ['success' => 1, 'assignment' => $updated, 'total' => $cart->getTotal()]
+                : ['success' => 0, 'error' => 'Не удалось обновить назначение'];
+            break;
+
+        case 'removeAssignment':
+            $roleId       = (int)($req['roleId'] ?? 0);
+            $assignmentId = (string)($req['assignmentId'] ?? '');
+            $ok = $cart->removeAssignment($sid, $roleId, $assignmentId);
+            $response = $ok
+                ? ['success' => 1, 'total' => $cart->getTotal()]
+                : ['success' => 0, 'error' => 'Назначение не найдено'];
+            break;
+
+        case 'updateServiceLevel':
+            $result = $cart->updateServiceLevel($sid, (string)$req['level']);
+            $response = $result
+                ? array_merge(['success' => 1], $result)
+                : ['success' => 0, 'error' => 'Не удалось обновить уровень'];
+            break;
     }
 
     $APPLICATION->RestartBuffer();
@@ -410,6 +485,44 @@ if ($drafts->isAvailable() && $userId) {
 }
 
 
+// Команда проекта — подтягиваем имена/фото для рендера
+$teamRaw  = array_values($cart->getTeam());
+$teamView = [];
+$bxIds    = array_filter(array_map(fn($m) => (int)($m['bitrixUserId'] ?? 0), $teamRaw));
+$uInfo    = [];
+if (!empty($bxIds)) {
+    $rsU = \CUser::GetList(
+        'ID', 'ASC',
+        ['ID' => implode('|', array_unique($bxIds))],
+        ['SELECT' => ['ID', 'NAME', 'LAST_NAME', 'PERSONAL_PHOTO']]
+    );
+    while ($u = $rsU->Fetch()) {
+        $photo = '';
+        if ($u['PERSONAL_PHOTO']) {
+            $f = \CFile::GetFileArray($u['PERSONAL_PHOTO']);
+            if ($f) $photo = $f['SRC'];
+        }
+        $uInfo[(int)$u['ID']] = [
+            'name'  => trim($u['NAME'] . ' ' . $u['LAST_NAME']) ?: $u['LOGIN'],
+            'photo' => $photo,
+        ];
+    }
+}
+foreach ($teamRaw as $m) {
+    $info = $uInfo[(int)$m['bitrixUserId']] ?? ['name' => 'Пользователь #' . $m['bitrixUserId'], 'photo' => ''];
+    $gradeId   = $m['gradeId'] ?? null;
+    $gradeName = $gradeId && isset($gradesById[$gradeId]) ? $gradesById[$gradeId]['NAME'] : null;
+    $teamView[] = [
+        'id'           => $m['id'],
+        'bitrixUserId' => (int)$m['bitrixUserId'],
+        'rate'         => (int)$m['rate'],
+        'gradeId'      => $gradeId,
+        'gradeName'    => $gradeName,
+        'name'         => $info['name'],
+        'photo'        => $info['photo'],
+    ];
+}
+
 $arResult = [
     'ROOTS'          => $byRoot,
     'GRAND_TOTAL'    => round($grand),
@@ -419,6 +532,8 @@ $arResult = [
     'DRAFTS_GROUPED' => $userDraftsGrouped,
     'DRAFT_COUNTS'   => $draftCounts,
     'DRAFT_TYPES'    => DraftService::TYPE_LABELS,
+    'TEAM'           => $teamView,
+    'CART_RAW'       => $cart->getRaw(),
     'LOCK_CONFIG'    => [
         'heartbeat_interval' => DraftLockService::getHeartbeatIntervalSeconds(),
         'confirm_timeout'    => DraftLockService::getConfirmTimeoutSeconds(),

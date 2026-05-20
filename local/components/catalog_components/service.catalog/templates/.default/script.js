@@ -374,29 +374,30 @@ if (window.__SERVICE_CATALOG_JS__) {
       return checked.value === 'high' ? 1.3 : checked.value === 'low' ? 0.77 : 1.0;
     };
 
+    // Пересчитать стоимость услуги исходя из назначений на странице.
     const recalcServiceCost = serviceId => {
       const det = $(`.sc-details[data-id="${serviceId}"]`);
       if (!det) return 0;
       let base = 0;
-      $$('tbody tr', det).forEach(tr => {
-        const sel   = tr.querySelector('.role-grade-select');
-        const inp   = tr.querySelector('.role-hours');
-        if (!sel || !inp) return;
+      $$('.sc-assignment', det).forEach(a => {
+        const sel   = a.querySelector('.assignment-spec');
+        const hInp  = a.querySelector('.assignment-hours');
+        if (!sel || !hInp) return;
         const rate  = parseFloat(sel.selectedOptions[0]?.dataset.rate) || 0;
-        const hours = parseFloat(inp.value) || 0;
+        const hours = parseFloat(hInp.value) || 0;
         base += rate * hours;
       });
       return Math.round(base * getLevelCoeff(serviceId));
     };
 
-    const updateRoleCostCell = (tr, coeff = 1.0) => {
-      const sel  = tr.querySelector('.role-grade-select');
-      const inp  = tr.querySelector('.role-hours');
-      const cell = tr.querySelector('.sdt-cost');
-      if (!sel || !inp || !cell) return;
+    const updateAssignmentCostCell = (assignmentEl) => {
+      const sel   = assignmentEl.querySelector('.assignment-spec');
+      const hInp  = assignmentEl.querySelector('.assignment-hours');
+      const cell  = assignmentEl.querySelector('.sc-assignment__cost');
+      if (!sel || !hInp || !cell) return;
       const rate  = parseFloat(sel.selectedOptions[0]?.dataset.rate) || 0;
-      const hours = parseFloat(inp.value) || 0;
-      cell.textContent = fmt(Math.round(rate * hours * coeff));
+      const hours = parseFloat(hInp.value) || 0;
+      cell.textContent = fmt(Math.round(rate * hours)) + ' ₽';
     };
 
     const updateServiceCostInRow = serviceId => {
@@ -569,19 +570,11 @@ if (window.__SERVICE_CATALOG_JS__) {
         const det       = $(`.sc-details[data-id="${serviceId}"]`);
         statusBtn.disabled = true;
 
-        let hoursData = {}, gradesData = {}, level = 'medium';
+        let level = 'medium';
         const rootSection = row?.dataset.rootSection || '';
         const sectionName = row?.dataset.sectionName || '';
 
         if (det) {
-          $$('tbody tr', det).forEach(tr => {
-            const hInp = tr.querySelector('.role-hours');
-            const gSel = tr.querySelector('.role-grade-select');
-            if (hInp && gSel) {
-              hoursData[hInp.dataset.role]  = parseInt(hInp.value) || 0;
-              gradesData[gSel.dataset.role] = parseInt(gSel.value) || 0;
-            }
-          });
           const checked = det.querySelector('.sc-level input[type="radio"]:checked');
           if (checked) level = checked.value;
         }
@@ -590,7 +583,7 @@ if (window.__SERVICE_CATALOG_JS__) {
           ajax: 'Y',
           sessid: BX.bitrix_sessid(),
           action: isAdd ? 'addService' : 'removeService',
-          serviceId, hours: hoursData, grades: gradesData, level, rootSection, sectionName
+          serviceId, level, rootSection, sectionName
         }, resp => {
           try {
             const j = JSON.parse(resp);
@@ -603,6 +596,9 @@ if (window.__SERVICE_CATALOG_JS__) {
                 row.classList.toggle('sc-row--active', isAdd);
               }
               updateTotal(j.total);
+              // После добавления/удаления услуги — перезагрузим, чтобы перерисовать содержимое карточки.
+              // (UI сразу выходит из режима «не настроена», и наоборот.)
+              setTimeout(() => location.reload(), 200);
             } else if (j.error) {
               showCatalogAlert(j.error);
             }
@@ -610,83 +606,6 @@ if (window.__SERVICE_CATALOG_JS__) {
           statusBtn.disabled = false;
         });
       }
-    });
-
-    document.addEventListener('change', e => {
-      if (!e.target.matches('.role-hours')) return;
-      const input     = e.target;
-      let hours       = Math.max(0, parseInt(input.value) || 0);
-      input.value     = hours;
-      const roleId    = input.dataset.role;
-      const det       = input.closest('.sc-details');
-      const serviceId = det?.dataset.id;
-      if (!serviceId) return;
-
-      const tr    = input.closest('tr');
-      const coeff = getLevelCoeff(serviceId);
-      updateRoleCostCell(tr, coeff);
-      updateServiceCostInRow(serviceId);
-
-      const row    = $(`.sc-row[data-id="${serviceId}"]`);
-      const inCart = row?.dataset.inCart === '1';
-      if (!inCart) return;
-
-      BX.ajax.post(location.href, {
-        ajax: 'Y',
-        sessid: BX.bitrix_sessid(),
-        action: 'updateHours',
-        serviceId, roleId, hours
-      }, resp => {
-        try {
-          const d = JSON.parse(resp);
-          if (d.success) {
-            updateTotal(d.total);
-            const costEl = row?.querySelector('.sc-row__cost');
-            if (costEl) costEl.textContent = fmt(d.serviceTotal) + ' ₽';
-          }
-        } catch (e) { console.error(e); }
-      });
-    });
-
-
-    document.addEventListener('change', e => {
-      if (!e.target.matches('.role-grade-select')) return;
-      const select    = e.target;
-      const serviceId = select.dataset.service;
-      const roleId    = select.dataset.role;
-      const gradeId   = select.value;
-      const opt       = select.selectedOptions[0];
-      const rate      = parseFloat(opt?.dataset.rate) || 0;
-
-      const tr = select.closest('tr');
-      if (tr) {
-        const rateCell = tr.querySelector('.sdt-rate');
-        if (rateCell) rateCell.textContent = fmt(rate);
-        const coeff = getLevelCoeff(serviceId);
-        updateRoleCostCell(tr, coeff);
-      }
-
-      updateServiceCostInRow(serviceId);
-
-      const row    = $(`.sc-row[data-id="${serviceId}"]`);
-      const inCart = row?.dataset.inCart === '1';
-      if (!inCart) return;
-
-      BX.ajax.post(location.href, {
-        ajax: 'Y',
-        sessid: BX.bitrix_sessid(),
-        action: 'updateRoleGrade',
-        serviceId, roleId, gradeId
-      }, resp => {
-        try {
-          const d = JSON.parse(resp);
-          if (d.success) {
-            updateTotal(d.total);
-            const costEl = row?.querySelector('.sc-row__cost');
-            if (costEl) costEl.textContent = fmt(d.serviceTotal) + ' ₽';
-          }
-        } catch (e) { console.error(e); }
-      });
     });
 
 
@@ -932,5 +851,201 @@ if (window.__SERVICE_CATALOG_JS__) {
       $('#admin-save-btn').addEventListener('click', () => submitAdminService({andCreateAnother:false}));
       $('#admin-save-add-btn').addEventListener('click', () => submitAdminService({andCreateAnother:true}));
     }
+
+    /* ==============================================================
+       НАЗНАЧЕНИЯ (assignments) — изменение специалиста, часов, добавление/удаление
+       ============================================================== */
+
+    const ajax = (data) => new Promise((resolve) => {
+      BX.ajax.post(location.href, { ajax: 'Y', sessid: BX.bitrix_sessid(), ...data }, (resp) => {
+        try { resolve(JSON.parse(resp)); } catch { resolve({ success: 0, error: 'Ошибка ответа' }); }
+      });
+    });
+
+    document.addEventListener('change', async (e) => {
+      const isSpec = e.target.matches('.assignment-spec');
+      const isHrs  = e.target.matches('.assignment-hours');
+      if (!isSpec && !isHrs) return;
+
+      const assignmentEl = e.target.closest('.sc-assignment');
+      const roleBlock    = e.target.closest('.sc-role-block');
+      const serviceId    = roleBlock?.dataset.service;
+      const roleId       = roleBlock?.dataset.role;
+      const assignmentId = assignmentEl?.dataset.assignmentId;
+      if (!assignmentId || !serviceId || !roleId) return;
+
+      updateAssignmentCostCell(assignmentEl);
+      updateServiceCostInRow(serviceId);
+
+      const payload = { action: 'updateAssignment', serviceId, roleId, assignmentId };
+      if (isSpec) payload.specialistId = e.target.value;
+      if (isHrs)  payload.hours        = Math.max(0, parseFloat(e.target.value) || 0);
+
+      const d = await ajax(payload);
+      if (d.success) {
+        updateTotal(d.total);
+      } else {
+        showCatalogAlert(d.error || 'Не удалось сохранить назначение');
+      }
+    });
+
+    document.addEventListener('click', async (e) => {
+      const addBtn = e.target.closest('.assignment-add');
+      if (addBtn) {
+        const roleBlock = addBtn.closest('.sc-role-block');
+        const serviceId = roleBlock?.dataset.service;
+        const roleId    = roleBlock?.dataset.role;
+        if (!serviceId || !roleId) return;
+        addBtn.disabled = true;
+        const d = await ajax({ action: 'addAssignment', serviceId, roleId });
+        addBtn.disabled = false;
+        if (d.success) {
+          // Простейший вариант: перерисовать страницу. Альтернатива — клонировать DOM.
+          location.reload();
+        } else {
+          showCatalogAlert(d.error || 'Не удалось добавить назначение');
+        }
+        return;
+      }
+
+      const rmBtn = e.target.closest('.assignment-remove');
+      if (rmBtn) {
+        const assignmentEl = rmBtn.closest('.sc-assignment');
+        const roleBlock    = rmBtn.closest('.sc-role-block');
+        const serviceId    = roleBlock?.dataset.service;
+        const roleId       = roleBlock?.dataset.role;
+        const assignmentId = assignmentEl?.dataset.assignmentId;
+        if (!serviceId || !roleId || !assignmentId) return;
+        rmBtn.disabled = true;
+        const d = await ajax({ action: 'removeAssignment', serviceId, roleId, assignmentId });
+        if (d.success) {
+          assignmentEl.remove();
+          updateServiceCostInRow(serviceId);
+          updateTotal(d.total);
+        } else {
+          showCatalogAlert(d.error || 'Не удалось убрать назначение');
+          rmBtn.disabled = false;
+        }
+        return;
+      }
+    });
+
+    /* ==============================================================
+       МОДАЛКА КОМАНДЫ ПРОЕКТА
+       ============================================================== */
+
+    const teamModal = $('#team-modal');
+    const teamBtn   = $('#open-team-modal');
+    const teamCountEl = teamBtn?.querySelector('.sc-team-btn__count');
+
+    const openTeamModal = () => { if (teamModal) teamModal.classList.add('is-open'); };
+    const closeTeamModal = () => { if (teamModal) teamModal.classList.remove('is-open'); };
+
+    teamBtn?.addEventListener('click', openTeamModal);
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('[data-open-team]')) { e.preventDefault(); openTeamModal(); }
+      if (e.target.closest('[data-close-team]')) { e.preventDefault(); closeTeamModal(); }
+    });
+
+    // Поиск пользователей с debounce
+    let searchTimer = null;
+    const teamSearchInput  = $('#team-user-search');
+    const teamSearchResults = $('#team-user-results');
+    const teamUserIdInput   = $('#team-user-id');
+    const teamUserSelected  = $('#team-user-selected');
+
+    const renderUserResults = (users) => {
+      if (!teamSearchResults) return;
+      teamSearchResults.innerHTML = '';
+      if (!users.length) {
+        teamSearchResults.innerHTML = '<div class="sc-team-add__no-results">Ничего не найдено</div>';
+        return;
+      }
+      users.forEach(u => {
+        const row = document.createElement('div');
+        row.className = 'sc-team-add__user-row';
+        row.dataset.userId = u.id;
+        row.innerHTML = `
+          ${u.avatar ? `<img src="${u.avatar}" class="sc-team-row__avatar">` : `<span class="sc-team-row__avatar sc-team-row__avatar--ph">${BX.util.htmlspecialchars(u.name.charAt(0))}</span>`}
+          <span>${BX.util.htmlspecialchars(u.name)}</span>
+        `;
+        row.addEventListener('click', () => {
+          if (teamUserIdInput) teamUserIdInput.value = u.id;
+          if (teamUserSelected) {
+            teamUserSelected.style.display = '';
+            teamUserSelected.innerHTML = row.innerHTML + ` <button type="button" class="sc-btn-icon" data-clear-user>×</button>`;
+          }
+          if (teamSearchInput) { teamSearchInput.value = ''; teamSearchInput.style.display = 'none'; }
+          teamSearchResults.innerHTML = '';
+        });
+        teamSearchResults.appendChild(row);
+      });
+    };
+
+    teamSearchInput?.addEventListener('input', () => {
+      const q = teamSearchInput.value.trim();
+      if (searchTimer) clearTimeout(searchTimer);
+      if (q.length < 2) { teamSearchResults.innerHTML = ''; return; }
+      searchTimer = setTimeout(async () => {
+        const d = await ajax({ action: 'searchUsers', search: q });
+        if (d.success) renderUserResults(d.users || []);
+      }, 250);
+    });
+
+    teamUserSelected?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-clear-user]')) {
+        if (teamUserIdInput) teamUserIdInput.value = '';
+        teamUserSelected.style.display = 'none';
+        teamUserSelected.innerHTML = '';
+        if (teamSearchInput) { teamSearchInput.style.display = ''; teamSearchInput.focus(); }
+      }
+    });
+
+    // Добавить специалиста
+    $('#team-add-btn')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const bitrixUserId = parseInt(teamUserIdInput?.value || '0', 10);
+      const rate         = parseInt($('#team-rate-input')?.value || '0', 10);
+      const gradeId      = parseInt($('#team-grade-select')?.value || '0', 10);
+
+      if (!bitrixUserId) { showCatalogAlert('Выберите сотрудника из списка'); return; }
+      if (!rate || rate < 0) { showCatalogAlert('Укажите ставку ₽/час'); return; }
+
+      const d = await ajax({ action: 'addTeamMember', bitrixUserId, rate, gradeId: gradeId || '' });
+      if (d.success) { location.reload(); }
+      else { showCatalogAlert(d.error || 'Не удалось добавить специалиста'); }
+    });
+
+    // Изменение/удаление существующего специалиста — обработчики в списке
+    $('#team-list')?.addEventListener('change', async (e) => {
+      const row = e.target.closest('.sc-team-row');
+      if (!row) return;
+      const specialistId = row.dataset.specId;
+      if (e.target.matches('.sc-team-row__rate')) {
+        const rate = Math.max(0, parseInt(e.target.value, 10) || 0);
+        const d = await ajax({ action: 'updateTeamMember', specialistId, rate });
+        if (d.success) { updateTotal(d.total); }
+        else { showCatalogAlert(d.error || 'Не удалось сохранить'); }
+      } else if (e.target.matches('.sc-team-row__grade')) {
+        const gradeId = e.target.value || '';
+        const d = await ajax({ action: 'updateTeamMember', specialistId, gradeId });
+        if (!d.success) showCatalogAlert(d.error || 'Не удалось сохранить');
+      }
+    });
+
+    $('#team-list')?.addEventListener('click', async (e) => {
+      const rm = e.target.closest('.sc-team-row__remove');
+      if (!rm) return;
+      const row = rm.closest('.sc-team-row');
+      const specialistId = row.dataset.specId;
+
+      showCatalogConfirm('Убрать специалиста из команды? Все его назначения будут сняты.', async (ok) => {
+        if (!ok) return;
+        const d = await ajax({ action: 'removeTeamMember', specialistId });
+        if (d.success) { location.reload(); }
+        else { showCatalogAlert(d.error || 'Не удалось удалить'); }
+      });
+    });
+
   });
 }

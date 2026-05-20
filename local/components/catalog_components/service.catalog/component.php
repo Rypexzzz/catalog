@@ -46,7 +46,10 @@ if ($req->isPost() && $req['ajax'] === 'Y') {
     }
     $id       = (int)$req['serviceId'];
     $action   = $req['action'];
-    $noIdActs = ['getCartTotal', 'createService'];
+    $noIdActs = [
+        'getCartTotal', 'createService',
+        'addTeamMember', 'updateTeamMember', 'removeTeamMember', 'getTeam',
+    ];
     $response = ['success' => 1];
 
     if (!$id && !in_array($action, $noIdActs, true)) {
@@ -94,39 +97,108 @@ if ($req->isPost() && $req['ajax'] === 'Y') {
                 $level = CostCalculator::LEVEL_MEDIUM;
             }
 
-            $cart->add($id, [
-                'hours'       => $req['hours'] ?: [],
-                'grades'      => $req['grades'] ?: [],
+            $cart->addService($id, [
                 'level'       => $level,
                 'rootSection' => $rootCode,
                 'sectionName' => $req['sectionName'] ?? '',
             ]);
-            $response['total'] = $cart->getTotal();
+            $response['total']   = $cart->getTotal();
+            $response['service'] = $cart->getService($id);
             break;
 
         case 'removeService':
-            $cart->remove($id);
+            $cart->removeService($id);
             $response['total'] = $cart->getTotal();
             break;
 
-        case 'updateHours':
-            $result = $cart->updateHours($id, (int)$req['roleId'], (int)$req['hours']);
-            if ($result) $response = array_merge($response, $result);
-            break;
-
-        case 'updateRoleGrade':
-            $result = $cart->updateGrade($id, (int)$req['roleId'], (int)$req['gradeId']);
-            if ($result) $response = array_merge($response, $result);
-            break;
-
-
         case 'updateServiceLevel':
-            $result = $cart->updateLevel($id, (string)$req['level']);
+            $result = $cart->updateServiceLevel($id, (string)$req['level']);
             if ($result) $response = array_merge($response, $result);
             break;
 
         case 'getCartTotal':
             $response['total'] = $cart->getTotal();
+            break;
+
+        case 'getTeam':
+            $response['team'] = array_values($cart->getTeam());
+            break;
+
+        case 'addTeamMember':
+            $bitrixUserId = (int)($req['bitrixUserId'] ?? 0);
+            $rate         = (int)($req['rate'] ?? 0);
+            $gradeId      = ($req['gradeId'] ?? null) ? (int)$req['gradeId'] : null;
+            $result = $cart->addTeamMember($bitrixUserId, $rate, $gradeId);
+            if ($result['success']) {
+                $response = ['success' => 1, 'specialist' => $result['specialist'], 'total' => $cart->getTotal()];
+            } else {
+                $response = ['success' => 0, 'error' => $result['error']];
+            }
+            break;
+
+        case 'updateTeamMember':
+            $specialistId = (string)($req['specialistId'] ?? '');
+            $data = [];
+            if (array_key_exists('rate', $req->toArray()))    $data['rate']    = (int)$req['rate'];
+            if (array_key_exists('gradeId', $req->toArray())) $data['gradeId'] = $req['gradeId'];
+            $updated = $cart->updateTeamMember($specialistId, $data);
+            if ($updated) {
+                $response = ['success' => 1, 'specialist' => $updated, 'total' => $cart->getTotal()];
+            } else {
+                $response = ['success' => 0, 'error' => 'Специалист не найден'];
+            }
+            break;
+
+        case 'removeTeamMember':
+            $specialistId = (string)($req['specialistId'] ?? '');
+            $info = $cart->removeTeamMember($specialistId);
+            if ($info['removed']) {
+                $response = ['success' => 1] + $info + ['total' => $cart->getTotal()];
+            } else {
+                $response = ['success' => 0, 'error' => 'Специалист не найден'];
+            }
+            break;
+
+        case 'addAssignment':
+            $roleId       = (int)($req['roleId'] ?? 0);
+            $specialistId = ($req['specialistId'] ?? null) !== null && $req['specialistId'] !== ''
+                ? (string)$req['specialistId'] : null;
+            $hours        = ($req['hours'] ?? null) !== null && $req['hours'] !== ''
+                ? (float)$req['hours'] : null;
+            $assignment = $cart->addAssignment($id, $roleId, $specialistId, $hours);
+            if ($assignment) {
+                $response = ['success' => 1, 'assignment' => $assignment, 'total' => $cart->getTotal()];
+            } else {
+                $response = ['success' => 0, 'error' => 'Не удалось добавить назначение'];
+            }
+            break;
+
+        case 'updateAssignment':
+            $roleId       = (int)($req['roleId'] ?? 0);
+            $assignmentId = (string)($req['assignmentId'] ?? '');
+            $data = [];
+            $raw  = $req->toArray();
+            if (array_key_exists('specialistId', $raw)) {
+                $data['specialistId'] = $raw['specialistId'] === '' ? null : (string)$raw['specialistId'];
+            }
+            if (array_key_exists('hours', $raw)) {
+                $data['hours'] = (float)$raw['hours'];
+            }
+            $updated = $cart->updateAssignment($id, $roleId, $assignmentId, $data);
+            if ($updated) {
+                $response = ['success' => 1, 'assignment' => $updated, 'total' => $cart->getTotal()];
+            } else {
+                $response = ['success' => 0, 'error' => 'Не удалось обновить назначение'];
+            }
+            break;
+
+        case 'removeAssignment':
+            $roleId       = (int)($req['roleId'] ?? 0);
+            $assignmentId = (string)($req['assignmentId'] ?? '');
+            $ok = $cart->removeAssignment($id, $roleId, $assignmentId);
+            $response = $ok
+                ? ['success' => 1, 'total' => $cart->getTotal()]
+                : ['success' => 0, 'error' => 'Назначение не найдено'];
             break;
     }
 
@@ -169,6 +241,7 @@ if ($idsByRole !== null && empty($idsByRole)) {
 
 
 $inCart     = $cart->getAll();
+$team       = $cart->getTeam();
 $subSecs    = $repo->getSubSections($activeRootId);
 $hasSubsecs = !empty($subSecs);
 
@@ -185,7 +258,7 @@ $arResult = [
 
 
 $buildSectionItems = function (int $sectionId, string $sectionName) use (
-    $repo, $q, $idsByRole, $inCart, $GRADES, $activeRootId, $rootSections
+    $repo, $q, $idsByRole, $inCart, $cart, $team, $activeRootId, $rootSections
 ): array {
     $elements = $repo->getServiceElements($sectionId, $q ?: null, $idsByRole);
     $items    = [];
@@ -194,28 +267,32 @@ $buildSectionItems = function (int $sectionId, string $sectionName) use (
         $pid = $el['ID'];
         $currentLevel = $inCart[$pid]['SERVICE_LEVEL'] ?? CostCalculator::LEVEL_MEDIUM;
 
-        [$comp, $std] = $repo->getServiceComposition($pid);
+        [$comp, $stdHours] = $repo->getServiceComposition($pid);
 
+        // Накладываем данные из корзины (если услуга добавлена) — legacy fields
+        // для совместимости с текущим шаблоном.
         if (isset($inCart[$pid])) {
-            foreach ($comp as $rid => $r) {
-                if (isset($inCart[$pid]['ROLES'][$rid])) {
-                    $saved = $inCart[$pid]['ROLES'][$rid];
+            foreach ($inCart[$pid]['ROLES'] as $rid => $saved) {
+                if (isset($comp[$rid])) {
                     $comp[$rid]['HOURS']    = $saved['HOURS'];
                     $comp[$rid]['GRADE_ID'] = $saved['GRADE_ID'];
                     $comp[$rid]['RATE']     = $saved['RATE'];
                     $comp[$rid]['COST']     = $saved['COST'];
                 }
             }
+            $service = $cart->getService($pid);
+            $currentCost = $service ? CostCalculator::serviceCost($service, $team) : 0;
+        } else {
+            $currentCost = 0;
         }
-
-        $currentCost = CostCalculator::serviceCost($comp, $currentLevel);
 
         $items[] = [
             'ID'                => $pid,
             'NAME'              => $el['NAME'],
             'MIN_CRITERIA'      => $el['MIN_CRITERIA'],
             'ROLES'             => $comp,
-            'STD_COST'          => $std,
+            'STD_HOURS'         => $stdHours,
+            'STD_COST'          => 0, // оставлено для совместимости со старым шаблоном
             'CURRENT_COST'      => $currentCost,
             'CURRENT_LEVEL'     => $currentLevel,
             'SECTION_ID'        => $sectionId,

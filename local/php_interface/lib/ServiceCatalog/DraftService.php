@@ -384,11 +384,10 @@ class DraftService
             return ['success' => false, 'error' => 'Название черновика не может быть пустым'];
         }
 
-        if (empty($cartData)) {
-            return ['success' => false, 'error' => 'Нельзя сохранить пустую корзину'];
+        if (!$this->isValidCartData($cartData)) {
+            return ['success' => false, 'error' => 'Нельзя сохранить пустой черновик'];
         }
 
-        // Валидация типа
         if (!in_array($type, [self::TYPE_PRIVATE, self::TYPE_SHARED, self::TYPE_PUBLIC], true)) {
             $type = self::TYPE_PRIVATE;
         }
@@ -428,17 +427,19 @@ class DraftService
             return ['success' => false, 'error' => 'Черновики недоступны'];
         }
 
+        if (!$this->isValidCartData($cartData)) {
+            return ['success' => false, 'error' => 'Нельзя сохранить пустой черновик'];
+        }
+
         $draft = $cls::getById($draftId)->fetch();
         if (!$draft) {
             return ['success' => false, 'error' => 'Черновик не найден'];
         }
 
-        // Проверяем права на редактирование
         if (!$this->canEdit($draft, $userId)) {
             return ['success' => false, 'error' => 'Нет прав на редактирование'];
         }
 
-        // Проверяем блокировку
         $lockService = $this->getLockService();
         if ($lockService->isLockedByOther($draftId, $userId)) {
             $lockInfo = $lockService->getLockInfo($draftId);
@@ -448,7 +449,6 @@ class DraftService
             ];
         }
 
-        // Обновляем данные
         $result = $cls::update($draftId, [
             'UF_DATA' => json_encode($cartData, JSON_UNESCAPED_UNICODE),
         ]);
@@ -456,6 +456,20 @@ class DraftService
         return $result->isSuccess()
             ? ['success' => true]
             : ['success' => false, 'error' => 'Ошибка сохранения'];
+    }
+
+    /**
+     * В черновике должна быть хотя бы команда или хотя бы одна услуга.
+     * Чистый {team: [], services: []} — пустой, сохранять не даём.
+     */
+    private function isValidCartData(array $cartData): bool
+    {
+        if ((int)($cartData['version'] ?? 0) !== 2) {
+            return false;
+        }
+        $team     = $cartData['team']     ?? [];
+        $services = $cartData['services'] ?? [];
+        return !empty($team) || !empty($services);
     }
 
     /**
@@ -565,7 +579,11 @@ class DraftService
 
     /**
      * Загрузить данные черновика (для применения к корзине).
-     * @return array|null Данные корзины или null
+     * Поддерживается только формат v2: {version: 2, team, services}.
+     * Черновики со старым форматом (без version или version<2) считаются
+     * несуществующими — должны быть удалены при миграции (TRUNCATE drafts_table).
+     *
+     * @return array|null Данные корзины формата v2 или null
      */
     public function load(int $draftId, int $userId): ?array
     {
@@ -579,13 +597,21 @@ class DraftService
             return null;
         }
 
-        // Проверяем доступ
         if (!$this->canAccess($draft, $userId)) {
             return null;
         }
 
         $data = json_decode($draft['UF_DATA'], true);
-        return json_last_error() === JSON_ERROR_NONE ? $data : null;
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return null;
+        }
+        if (!is_array($data) || (int)($data['version'] ?? 0) !== 2) {
+            return null;
+        }
+        if (!isset($data['team'], $data['services']) || !is_array($data['team']) || !is_array($data['services'])) {
+            return null;
+        }
+        return $data;
     }
 
     /**

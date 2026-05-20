@@ -35,7 +35,7 @@ if ($req->get('load_draft') && $drafts->isAvailable() && $userId) {
         $cart->replace($data);
         LocalRedirect($APPLICATION->GetCurPageParam('', ['load_draft']));
     } else {
-        ShowError('Черновик не найден или нет доступа');
+        ShowError('Черновик не найден или несовместим с текущей версией каталога');
     }
 }
 
@@ -53,7 +53,7 @@ if ($req->isPost() && $req['ajax'] === 'Y') {
 
     switch ($req['action']) {
         case 'removeService':
-            $cart->remove($sid);
+            $cart->removeService($sid);
             break;
 
         case 'clearCart':
@@ -104,8 +104,8 @@ if ($req->isPost() && $req['ajax'] === 'Y') {
                 $accessUsers = json_decode($accessUsers, true) ?: [];
             }
             $accessUsers = array_map('intval', (array)$accessUsers);
-            
-            $cartData = $cart->getAll();
+
+            $cartData = $cart->getRaw();
             $response = $drafts->create($userId, $name, $cartData, $type, $accessUsers);
             break;
 
@@ -115,7 +115,7 @@ if ($req->isPost() && $req['ajax'] === 'Y') {
                 break;
             }
             $draftId  = (int)$req['draft_id'];
-            $cartData = $cart->getAll();
+            $cartData = $cart->getRaw();
             $response = $drafts->updateData($draftId, $userId, $cartData);
             break;
 
@@ -205,7 +205,7 @@ if ($req->isPost() && $req['ajax'] === 'Y') {
                 $response = ['success' => 0, 'error' => 'Необходима авторизация'];
                 break;
             }
-            $cartData = $cart->getAll();
+            $cartData = $cart->getRaw();
             $response = $drafts->unlockAndSave((int)$req['draft_id'], $userId, $cartData);
             break;
 
@@ -296,7 +296,7 @@ if ($req->isPost() && $req['ajax'] === 'Y') {
                 $response = ['success' => 0, 'error' => 'Необходима авторизация'];
                 break;
             }
-            $response = $drafts->save($userId, trim($req['draft_name'] ?? ''), $cart->getAll());
+            $response = $drafts->save($userId, trim($req['draft_name'] ?? ''), $cart->getRaw());
             break;
     }
 

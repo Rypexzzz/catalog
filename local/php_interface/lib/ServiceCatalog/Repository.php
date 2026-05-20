@@ -199,15 +199,20 @@ class Repository
         return $grades ? (int)array_key_first($grades) : 0;
     }
 
+    /**
+     * Состав услуги: только структурные поля (роль + нормативные часы + результат).
+     * Стоимости в каталоге больше нет — она появляется в корзине через ставки команды.
+     *
+     * @return array{0: array<int, array{ROLE_ID:int, ROLE_NAME:string, RESULT:string, HOURS:float, STD_HOURS:float}>, 1: float}
+     */
     public function getServiceComposition(int $serviceId): array
     {
         if (isset($this->compositionCache[$serviceId])) {
             return $this->compositionCache[$serviceId];
         }
 
-        $grades = $this->getGrades();
-        $roles  = $this->getRoles();
-        $cls    = $this->getHlDataClass($this->hlSostavId);
+        $roles = $this->getRoles();
+        $cls   = $this->getHlDataClass($this->hlSostavId);
 
         $rs = $cls::getList([
             'filter' => ['UF_SERVICE' => $serviceId],
@@ -215,14 +220,11 @@ class Repository
         ]);
 
         $composition = [];
-        $stdCost     = 0;
+        $stdHours    = 0.0;
 
         while ($row = $rs->fetch()) {
-            $roleId         = (int)$row['UF_ROLE'];
-            $hours          = (float)$row['UF_HOURS'];
-            $defaultGradeId = $this->getDefaultGradeForRole($roleId);
-            $rate           = $grades[$defaultGradeId]['RATE'] ?? 0;
-            $cost           = $hours * $rate;
+            $roleId = (int)$row['UF_ROLE'];
+            $hours  = (float)$row['UF_HOURS'];
 
             $composition[$roleId] = [
                 'ROLE_ID'   => $roleId,
@@ -230,15 +232,12 @@ class Repository
                 'RESULT'    => $row['UF_RESULT'] ?? '',
                 'HOURS'     => $hours,
                 'STD_HOURS' => $hours,
-                'GRADE_ID'  => $defaultGradeId,
-                'RATE'      => $rate,
-                'COST'      => $cost,
             ];
-            $stdCost += $cost;
+            $stdHours += $hours;
         }
 
-        $this->compositionCache[$serviceId] = [$composition, $stdCost];
-        return [$composition, $stdCost];
+        $this->compositionCache[$serviceId] = [$composition, $stdHours];
+        return [$composition, $stdHours];
     }
 
     /* ================================================================

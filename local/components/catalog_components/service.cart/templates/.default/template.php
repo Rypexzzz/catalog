@@ -21,13 +21,22 @@ $lockConfig = $arResult['LOCK_CONFIG'] ?? [
     <div class="cart-scroll">
       <div class="cart-toolbar">
         <button type="button" class="sc-btn sc-btn--primary sc-team-btn" id="open-team-modal" title="Команда проекта">
-          👥 Команда: <span class="sc-team-btn__count"><?= count($arResult['TEAM']) ?></span>
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M11 7a3 3 0 1 0-6 0 3 3 0 0 0 6 0Zm2 0a5 5 0 0 1-1.5 3.58A6 6 0 0 1 14 16H2a6 6 0 0 1 2.5-5.42A5 5 0 1 1 13 7Z" fill="currentColor"/>
+          </svg>
+          Команда
+          <span class="sc-team-btn__count"><?= count($arResult['TEAM']) ?></span>
         </button>
       </div>
 
       <?php if (empty($arResult['TEAM']) && !empty($arResult['ROOTS'])): ?>
       <div class="sc-team-hint">
-        <span>💡 Соберите команду проекта, чтобы видеть стоимость услуг с фактическими ставками.</span>
+        <span class="sc-team-hint__icon">
+          <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M9 1.5a5.5 5.5 0 0 0-3.3 9.9c.5.37.8.95.8 1.57V14a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1.03c0-.62.3-1.2.8-1.57A5.5 5.5 0 0 0 9 1.5ZM7 16.5h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span>Соберите команду проекта, чтобы видеть стоимость услуг с фактическими ставками специалистов.</span>
         <button type="button" class="sc-btn sc-btn--ghost sc-btn--sm" data-open-team>Открыть</button>
       </div>
       <?php endif; ?>
@@ -129,15 +138,29 @@ $lockConfig = $arResult['LOCK_CONFIG'] ?? [
                                 </select>
                                 <input type="number" min="0" step="0.5" class="sc-input sc-input--number assignment-hours" value="<?= $hours ?>">
                                 <span class="sc-assignment__cost"><?= number_format($cost, 0, '', ' ') ?> ₽</span>
-                                <button type="button" class="sc-btn-icon sc-btn-icon--danger assignment-remove" title="Убрать назначение">×</button>
+                                <button type="button" class="sc-btn-icon sc-btn-icon--danger assignment-remove" title="Убрать назначение" aria-label="Убрать назначение">
+                                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                                    <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                                  </svg>
+                                </button>
                               </div>
                             <?php endforeach; ?>
-                            <button type="button" class="sc-btn sc-btn--ghost sc-btn--sm assignment-add">＋ ещё специалист</button>
+                            <button type="button" class="sc-btn sc-btn--ghost sc-btn--sm assignment-add">
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                                <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                              </svg>
+                              Ещё специалист
+                            </button>
                           </div>
                         <?php else: ?>
                           <div class="sc-assignments">
                             <div class="sc-assignment-empty">Нет назначений</div>
-                            <button type="button" class="sc-btn sc-btn--ghost sc-btn--sm assignment-add">＋ выбрать специалиста</button>
+                            <button type="button" class="sc-btn sc-btn--ghost sc-btn--sm assignment-add">
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                                <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                              </svg>
+                              Выбрать специалиста
+                            </button>
                           </div>
                         <?php endif; ?>
                       </div>
@@ -462,7 +485,11 @@ $lockConfig = $arResult['LOCK_CONFIG'] ?? [
               <?php endforeach; ?>
             </select>
             <input type="number" min="0" class="sc-input sc-input--number sc-team-row__rate" value="<?= (int)$m['rate'] ?>" placeholder="Ставка ₽/ч">
-            <button type="button" class="sc-btn-icon sc-btn-icon--danger sc-team-row__remove" title="Удалить из команды">×</button>
+            <button type="button" class="sc-btn-icon sc-btn-icon--danger sc-team-row__remove" title="Удалить из команды" aria-label="Удалить из команды">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+            </button>
           </div>
         <?php endforeach; endif; ?>
       </div>
@@ -483,7 +510,12 @@ $lockConfig = $arResult['LOCK_CONFIG'] ?? [
             <?php endforeach; ?>
           </select>
           <input type="number" min="0" id="team-rate-input" class="sc-input sc-input--number" placeholder="Ставка ₽/ч">
-          <button type="button" class="sc-btn sc-btn--primary sc-btn--sm" id="team-add-btn">＋ Добавить</button>
+          <button type="button" class="sc-btn sc-btn--primary sc-btn--sm" id="team-add-btn">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            Добавить
+          </button>
         </div>
       </div>
     </div>

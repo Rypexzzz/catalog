@@ -1044,54 +1044,102 @@ body.sc-modal-open {
   overflow: visible !important;
 }
 /* ============================================================
-   КОМАНДА ПРОЕКТА + НАЗНАЧЕНИЯ (phase 3, дубль из каталога)
+   КОМАНДА ПРОЕКТА + НАЗНАЧЕНИЯ
    ============================================================ */
 
 .cart-toolbar {
   display: flex;
   justify-content: flex-end;
-  padding: 8px 0;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0 10px;
 }
+
 .sc-team-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 7px 14px;
+}
+.sc-team-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 .sc-team-btn__count {
-  background: rgba(255,255,255,0.25);
-  border-radius: 999px;
-  padding: 0 8px;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: var(--sc-radius-full);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
 }
+
 .sc-team-hint {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 16px;
-  background: #fff8e1;
-  border: 1px solid #f6c878;
-  border-radius: 8px;
-  margin: 8px 0;
+  padding: 10px 16px;
+  margin: 4px 0 12px;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1px solid #fde68a;
+  border-radius: var(--sc-radius);
   font-size: 13px;
+  color: #78350f;
+  box-shadow: var(--sc-shadow-sm);
 }
+.sc-team-hint__icon {
+  flex-shrink: 0;
+  color: #d97706;
+}
+.sc-team-hint__icon svg { display: block; width: 18px; height: 18px; }
 .sc-team-hint span { flex: 1; }
 
 .sc-roles {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px 0;
+  gap: 10px;
+  padding: 4px 0;
 }
 .sc-role-block {
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 12px;
-  background: #fafbfc;
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-radius);
+  padding: 12px 14px;
+  background: var(--sc-bg);
+  transition: border-color var(--sc-transition), box-shadow var(--sc-transition);
 }
-.sc-role-block__head { margin-bottom: 8px; }
-.sc-role-block__name strong { font-size: 14px; }
-.sc-role-block__std { color: #777; font-size: 12px; margin-left: 6px; }
-.sc-role-block__result { color: #555; font-size: 12px; margin-top: 4px; }
+.sc-role-block:hover {
+  border-color: var(--sc-border-hover);
+  box-shadow: var(--sc-shadow-sm);
+}
+.sc-role-block__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-bottom: 10px;
+}
+.sc-role-block__name strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sc-text);
+}
+.sc-role-block__std {
+  color: var(--sc-text-muted);
+  font-size: 12px;
+  font-family: var(--sc-mono);
+  font-feature-settings: 'tnum';
+}
+.sc-role-block__result {
+  color: var(--sc-text-secondary);
+  font-size: 12px;
+  flex-basis: 100%;
+}
 
 .sc-assignments {
   display: flex;
@@ -1100,93 +1148,158 @@ body.sc-modal-open {
 }
 .sc-assignment {
   display: grid;
-  grid-template-columns: 1fr 90px 110px 32px;
+  grid-template-columns: minmax(0, 1fr) 110px 110px 28px;
   gap: 8px;
   align-items: center;
+  padding: 4px 6px;
+  border-radius: var(--sc-radius);
+  background: var(--sc-card);
+  transition: background var(--sc-transition);
+}
+.sc-assignment:hover {
+  background: var(--sc-primary-light);
 }
 .sc-assignment__cost {
   text-align: right;
   font-weight: 600;
   font-size: 13px;
+  font-family: var(--sc-mono);
+  font-feature-settings: 'tnum';
+  color: var(--sc-text);
 }
 .sc-assignment-empty {
   font-size: 12px;
-  color: #888;
+  color: var(--sc-text-muted);
   font-style: italic;
+  padding: 6px 4px;
+}
+.assignment-add {
+  align-self: flex-start;
+  margin-top: 4px;
 }
 
 .sc-team-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 18px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 .sc-team-row {
   display: grid;
-  grid-template-columns: 1fr 140px 110px 32px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 140px 120px 32px;
+  gap: 10px;
   align-items: center;
-  padding: 6px;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  background: #fff;
+  padding: 8px 10px;
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-radius);
+  background: var(--sc-card);
+  transition: border-color var(--sc-transition), box-shadow var(--sc-transition);
 }
-.sc-team-row__user { display: flex; align-items: center; gap: 8px; }
+.sc-team-row:hover {
+  border-color: var(--sc-border-hover);
+  box-shadow: var(--sc-shadow-sm);
+}
+.sc-team-row__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
 .sc-team-row__avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--sc-radius-full);
   object-fit: cover;
   flex-shrink: 0;
+  border: 1px solid var(--sc-border);
 }
 .sc-team-row__avatar--ph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #ddd;
-  color: #555;
-  font-weight: 600;
+  background: linear-gradient(135deg, var(--sc-primary-light) 0%, var(--sc-primary-border) 100%);
+  color: var(--sc-primary-hover);
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: uppercase;
 }
-.sc-team-row__name { font-size: 13px; }
-.sc-team-empty { color: #888; padding: 16px; text-align: center; font-size: 13px; }
+.sc-team-row__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sc-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.sc-team-empty {
+  color: var(--sc-text-muted);
+  padding: 22px;
+  text-align: center;
+  font-size: 13px;
+  border: 1px dashed var(--sc-border);
+  border-radius: var(--sc-radius);
+  background: var(--sc-bg);
+}
 
 .sc-team-add {
-  border-top: 1px solid #e0e0e0;
-  padding-top: 12px;
+  border-top: 1px solid var(--sc-border);
+  padding-top: 16px;
 }
-.sc-team-add__title { font-weight: 600; margin-bottom: 8px; font-size: 13px; }
+.sc-team-add__title {
+  font-weight: 600;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--sc-text);
+}
 .sc-team-add__row {
   display: grid;
-  grid-template-columns: 1fr 140px 120px auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 140px 120px auto;
+  gap: 10px;
   align-items: start;
 }
-.sc-team-add__user { position: relative; }
+.sc-team-add__user {
+  position: relative;
+  min-width: 0;
+}
 .sc-team-add__results {
   position: absolute;
   top: 100%;
   left: 0;
   right: 0;
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
+  background: var(--sc-card);
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-radius);
   max-height: 220px;
   overflow-y: auto;
   z-index: 10;
-  margin-top: 2px;
+  margin-top: 4px;
+  box-shadow: var(--sc-shadow-md);
 }
 .sc-team-add__user-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 10px;
+  padding: 8px 10px;
   cursor: pointer;
   font-size: 13px;
+  color: var(--sc-text);
+  transition: background var(--sc-transition);
 }
-.sc-team-add__user-row:hover { background: #f5f5f5; }
+.sc-team-add__user-row:hover {
+  background: var(--sc-primary-light);
+}
+.sc-team-add__user-row .sc-team-row__avatar {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
 .sc-team-add__no-results {
-  padding: 8px;
-  color: #888;
+  padding: 14px;
+  color: var(--sc-text-muted);
   font-size: 12px;
   text-align: center;
 }
@@ -1194,8 +1307,28 @@ body.sc-modal-open {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 6px;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  background: #f5f5f5;
+  padding: 6px 8px;
+  border: 1px solid var(--sc-primary-border);
+  border-radius: var(--sc-radius-full);
+  background: var(--sc-primary-light);
+  color: var(--sc-text);
+  font-size: 13px;
+}
+.sc-team-add__selected .sc-team-row__avatar {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+}
+
+@media (max-width: 720px) {
+  .sc-assignment {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 8px;
+  }
+  .sc-assignment__cost { text-align: left; }
+  .sc-team-row,
+  .sc-team-add__row {
+    grid-template-columns: 1fr;
+  }
 }

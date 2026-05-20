@@ -973,7 +973,7 @@ if (window.__SERVICE_CATALOG_JS__) {
           if (teamUserIdInput) teamUserIdInput.value = u.id;
           if (teamUserSelected) {
             teamUserSelected.style.display = '';
-            teamUserSelected.innerHTML = row.innerHTML + ` <button type="button" class="sc-btn-icon" data-clear-user>×</button>`;
+            teamUserSelected.innerHTML = row.innerHTML + ` <button type="button" class="sc-btn-icon" data-clear-user title="Сбросить" aria-label="Сбросить выбор"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>`;
           }
           if (teamSearchInput) { teamSearchInput.value = ''; teamSearchInput.style.display = 'none'; }
           teamSearchResults.innerHTML = '';

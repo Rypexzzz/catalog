@@ -209,7 +209,8 @@ class ExcelExporter
     private static function buildDevSheet(
         Worksheet $sh, string $name, array $byStage, int $totalH, float $totalC
     ): void {
-        $widths = ['A' => 12, 'B' => 50, 'C' => 30, 'D' => 18, 'E' => 16, 'F' => 14, 'G' => 18];
+        // Колонки: A №, B Услуга, C Роль, D Специалист, E Грейд, F Часы, G Ставка, H Стоимость
+        $widths = ['A' => 12, 'B' => 40, 'C' => 24, 'D' => 24, 'E' => 16, 'F' => 14, 'G' => 14, 'H' => 18];
         foreach ($widths as $c => $w) $sh->getColumnDimension($c)->setWidth($w);
 
         /* ---- Сводная мини-таблица (строки 1-3) ---- */
@@ -234,22 +235,23 @@ class ExcelExporter
 
         /* ---- Детальная таблица (строки 6+) ---- */
         foreach (['A6' => '№ п/п', 'B6' => 'Название задачи', 'C6' => 'Роль на проекте',
-                   'D6' => 'Категория персонала', 'E6' => 'Трудозатраты, чел/часы',
-                   'F6' => 'Ставка, руб./час', 'G6' => 'Стоимость, руб. без НДС'] as $cell => $v) {
+                   'D6' => 'Специалист', 'E6' => 'Грейд',
+                   'F6' => 'Трудозатраты, чел/часы',
+                   'G6' => 'Ставка, руб./час', 'H6' => 'Стоимость, руб. без НДС'] as $cell => $v) {
             $sh->setCellValue($cell, $v);
         }
-        $sh->getStyle('A6:G6')->applyFromArray(self::headerStyle());
+        $sh->getStyle('A6:H6')->applyFromArray(self::headerStyle());
         $sh->getRowDimension(6)->setRowHeight(30);
 
         $sh->setCellValue('A7', $name);
-        $sh->mergeCells('A7:G7');
+        $sh->mergeCells('A7:H7');
         $sh->getStyle('A7')->applyFromArray(['font' => ['bold' => true, 'size' => 12]]);
 
         $sh->setCellValue('A8', 'ИТОГО');
-        $sh->mergeCells('A8:D8');
-        $sh->setCellValue('E8', $totalH);
-        $sh->setCellValue('G8', $totalC);
-        $sh->getStyle('A8:G8')->applyFromArray(self::totalRowStyle());
+        $sh->mergeCells('A8:E8');
+        $sh->setCellValue('F8', $totalH);
+        $sh->setCellValue('H8', $totalC);
+        $sh->getStyle('A8:H8')->applyFromArray(self::totalRowStyle());
 
         $row      = 9;
         $stageNum = 1;
@@ -262,46 +264,100 @@ class ExcelExporter
             }
 
             $sh->setCellValue("B{$row}", "{$stageNum}. {$stageName}");
-            $sh->setCellValue("E{$row}", $stageH);
-            $sh->setCellValue("G{$row}", $stageC);
-            $sh->getStyle("A{$row}:G{$row}")->applyFromArray(self::stageStyle());
+            $sh->setCellValue("F{$row}", $stageH);
+            $sh->setCellValue("H{$row}", $stageC);
+            $sh->getStyle("A{$row}:H{$row}")->applyFromArray(self::stageStyle());
             $row++;
 
             $sub = 1;
             foreach ($items as $item) {
-                $roles     = $item['ROLES'] ?? [];
-                $first     = true;
-                $startRow  = $row;
-
-                foreach ($roles as $role) {
-                    if ($first) {
-                        $sh->setCellValue("A{$row}", "{$stageNum}.{$sub}");
-                        $sh->setCellValue("B{$row}", $item['NAME']);
-                    }
-                    $sh->setCellValue("C{$row}", $role['ROLE_NAME'] ?? '');
-                    $sh->setCellValue("D{$row}", $role['GRADE_NAME'] ?? '');
-                    $sh->setCellValue("E{$row}", $role['HOURS'] ?? 0);
-                    $sh->setCellValue("F{$row}", $role['RATE'] ?? 0);
-                    if ($first) {
-                        $sh->setCellValue("G{$row}", $item['SUM'] ?? 0);
-                    }
-                    $sh->getStyle("A{$row}:G{$row}")->applyFromArray(self::dataStyle());
-                    $first = false;
-                    $row++;
-                }
-
-                if (count($roles) > 1) {
-                    $endRow = $row - 1;
-                    $sh->mergeCells("A{$startRow}:A{$endRow}");
-                    $sh->mergeCells("B{$startRow}:B{$endRow}");
-                    $sh->mergeCells("G{$startRow}:G{$endRow}");
-                    foreach (['A', 'B', 'G'] as $c) {
-                        $sh->getStyle("{$c}{$startRow}")->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+                $serviceStart = $row;
+                self::writeServiceRows($sh, $item, $row, "{$stageNum}.{$sub}", false, 0.0);
+                $serviceEnd = $row - 1;
+                if ($serviceEnd > $serviceStart) {
+                    $sh->mergeCells("A{$serviceStart}:A{$serviceEnd}");
+                    $sh->mergeCells("B{$serviceStart}:B{$serviceEnd}");
+                    $sh->mergeCells("H{$serviceStart}:H{$serviceEnd}");
+                    foreach (['A', 'B', 'H'] as $c) {
+                        $sh->getStyle("{$c}{$serviceStart}")->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
                     }
                 }
                 $sub++;
             }
             $stageNum++;
+        }
+    }
+
+    /**
+     * Пишет строки одной услуги: одна строка на каждое назначение
+     * (или одна служебная строка "— не назначен — 0 ч", если у роли нет назначений).
+     * Возвращает количество записанных строк через $row (передаётся по ссылке).
+     *
+     * Колонки: A №, B Услуга, C Роль, D Спец, E Грейд, F Часы, G Ставка, [H] Коэфф (service only), Last Стоимость
+     */
+    private static function writeServiceRows(Worksheet $sh, array $item, int &$row, string $num, bool $svcStage, float $coeff): void
+    {
+        $roles = $item['ROLES'] ?? [];
+        $first = true;
+        // Колонка стоимости и итоговый набор колонок зависят от svcStage
+        $costCol     = $svcStage ? 'I' : 'H';
+        $coeffCol    = $svcStage ? 'H' : null;
+        $lastCol     = $costCol;
+        $colsForData = $svcStage ? 'A:I' : 'A:H';
+
+        foreach ($roles as $role) {
+            $assignments = $role['ASSIGNMENTS'] ?? [];
+            $roleStart   = $row;
+
+            if (empty($assignments)) {
+                // Роль без назначений — одна служебная строка
+                if ($first) {
+                    $sh->setCellValue("A{$row}", $num);
+                    $sh->setCellValue("B{$row}", $item['NAME']);
+                }
+                $sh->setCellValue("C{$row}", $role['ROLE_NAME'] ?? '');
+                $sh->setCellValue("D{$row}", '— не назначен');
+                $sh->setCellValue("E{$row}", '');
+                $sh->setCellValue("F{$row}", 0);
+                $sh->setCellValue("G{$row}", 0);
+                if ($svcStage && $first) {
+                    $sh->setCellValue("{$coeffCol}{$row}", $coeff);
+                }
+                if ($first) {
+                    $sh->setCellValue("{$lastCol}{$row}", $item['SUM'] ?? 0);
+                }
+                $sh->getStyle("A{$row}:{$lastCol}{$row}")->applyFromArray(self::dataStyle());
+                $first = false;
+                $row++;
+                continue;
+            }
+
+            foreach ($assignments as $a) {
+                if ($first) {
+                    $sh->setCellValue("A{$row}", $num);
+                    $sh->setCellValue("B{$row}", $item['NAME']);
+                }
+                $sh->setCellValue("C{$row}", $role['ROLE_NAME'] ?? '');
+                $sh->setCellValue("D{$row}", $a['SPEC_NAME'] ?? '—');
+                $sh->setCellValue("E{$row}", $a['GRADE_NAME'] ?? '');
+                $sh->setCellValue("F{$row}", $a['HOURS'] ?? 0);
+                $sh->setCellValue("G{$row}", $a['RATE'] ?? 0);
+                if ($svcStage && $first) {
+                    $sh->setCellValue("{$coeffCol}{$row}", $coeff);
+                }
+                if ($first) {
+                    $sh->setCellValue("{$lastCol}{$row}", $item['SUM'] ?? 0);
+                }
+                $sh->getStyle("A{$row}:{$lastCol}{$row}")->applyFromArray(self::dataStyle());
+                $first = false;
+                $row++;
+            }
+
+            $roleEnd = $row - 1;
+            if ($roleEnd > $roleStart) {
+                $sh->mergeCells("C{$roleStart}:C{$roleEnd}");
+                $sh->getStyle("C{$roleStart}")->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+            }
         }
     }
 
@@ -312,7 +368,8 @@ class ExcelExporter
     private static function buildServiceSheet(
         Worksheet $sh, string $name, array $items, int $totalH, float $totalC
     ): void {
-        $widths = ['A' => 12, 'B' => 50, 'C' => 30, 'D' => 18, 'E' => 16, 'F' => 14, 'G' => 18, 'H' => 18];
+        // Колонки: A №, B Услуга, C Роль, D Спец, E Грейд, F Часы, G Ставка, H Коэфф, I Стоимость
+        $widths = ['A' => 12, 'B' => 40, 'C' => 24, 'D' => 24, 'E' => 16, 'F' => 14, 'G' => 14, 'H' => 14, 'I' => 18];
         foreach ($widths as $c => $w) $sh->getColumnDimension($c)->setWidth($w);
 
         /* ---- Сводная мини-таблица (строки 1-3) ---- */
@@ -337,66 +394,48 @@ class ExcelExporter
 
         /* ---- Детальная таблица (строки 6+) ---- */
         foreach (['A6' => '№ п/п', 'B6' => 'Название задачи', 'C6' => 'Роль на проекте',
-                   'D6' => 'Категория персонала', 'E6' => 'Трудозатраты, чел/часы',
-                   'F6' => 'Ставка, руб./час', 'G6' => 'Коэфф. уровня обслуживания',
-                   'H6' => 'Стоимость, руб. без НДС'] as $cell => $v) {
+                   'D6' => 'Специалист', 'E6' => 'Грейд',
+                   'F6' => 'Трудозатраты, чел/часы',
+                   'G6' => 'Ставка, руб./час',
+                   'H6' => 'Коэфф. уровня обслуживания',
+                   'I6' => 'Стоимость, руб. без НДС'] as $cell => $v) {
             $sh->setCellValue($cell, $v);
         }
-        $sh->getStyle('A6:H6')->applyFromArray(self::headerStyle());
+        $sh->getStyle('A6:I6')->applyFromArray(self::headerStyle());
         $sh->getRowDimension(6)->setRowHeight(30);
 
         $sh->setCellValue('A7', $name);
-        $sh->mergeCells('A7:H7');
+        $sh->mergeCells('A7:I7');
         $sh->getStyle('A7')->applyFromArray(['font' => ['bold' => true, 'size' => 12]]);
 
         $sh->setCellValue('A8', 'ИТОГО');
-        $sh->mergeCells('A8:D8');
-        $sh->setCellValue('E8', $totalH);
-        $sh->setCellValue('H8', $totalC);
-        $sh->getStyle('A8:H8')->applyFromArray(self::totalRowStyle());
+        $sh->mergeCells('A8:E8');
+        $sh->setCellValue('F8', $totalH);
+        $sh->setCellValue('I8', $totalC);
+        $sh->getStyle('A8:I8')->applyFromArray(self::totalRowStyle());
 
         $sh->setCellValue('B9', '1.0 Поддержка и управление сервисом');
-        $sh->setCellValue('E9', $totalH);
-        $sh->setCellValue('H9', $totalC);
-        $sh->getStyle('A9:H9')->applyFromArray(self::stageStyle());
+        $sh->setCellValue('F9', $totalH);
+        $sh->setCellValue('I9', $totalC);
+        $sh->getStyle('A9:I9')->applyFromArray(self::stageStyle());
 
         $sh->setCellValue('A10', '3-я линия поддержки');
-        $sh->mergeCells('A10:H10');
-        $sh->getStyle('A10:H10')->applyFromArray(self::dataStyle());
+        $sh->mergeCells('A10:I10');
+        $sh->getStyle('A10:I10')->applyFromArray(self::dataStyle());
 
         $row  = 11;
         $task = 1;
 
         foreach ($items as $item) {
-            $roles     = $item['ROLES'] ?? [];
             $level     = $item['SERVICE_LEVEL'] ?? CostCalculator::LEVEL_MEDIUM;
             $coeff     = CostCalculator::getLevelCoefficient($level);
-            $first     = true;
-            $startRow  = $row;
-
-            foreach ($roles as $role) {
-                if ($first) {
-                    $sh->setCellValue("A{$row}", "1.{$task}");
-                    $sh->setCellValue("B{$row}", $item['NAME']);
-                }
-                $sh->setCellValue("C{$row}", $role['ROLE_NAME'] ?? '');
-                $sh->setCellValue("D{$row}", $role['GRADE_NAME'] ?? '');
-                $sh->setCellValue("E{$row}", $role['HOURS'] ?? 0);
-                $sh->setCellValue("F{$row}", $role['RATE'] ?? 0);
-                if ($first) {
-                    $sh->setCellValue("G{$row}", $coeff);
-                    $sh->setCellValue("H{$row}", $item['SUM'] ?? 0);
-                }
-                $sh->getStyle("A{$row}:H{$row}")->applyFromArray(self::dataStyle());
-                $first = false;
-                $row++;
-            }
-
-            if (count($roles) > 1) {
-                $endRow = $row - 1;
-                foreach (['A', 'B', 'G', 'H'] as $c) {
-                    $sh->mergeCells("{$c}{$startRow}:{$c}{$endRow}");
-                    $sh->getStyle("{$c}{$startRow}")->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+            $serviceStart = $row;
+            self::writeServiceRows($sh, $item, $row, "1.{$task}", true, $coeff);
+            $serviceEnd = $row - 1;
+            if ($serviceEnd > $serviceStart) {
+                foreach (['A', 'B', 'H', 'I'] as $c) {
+                    $sh->mergeCells("{$c}{$serviceStart}:{$c}{$serviceEnd}");
+                    $sh->getStyle("{$c}{$serviceStart}")->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
                 }
             }
             $task++;

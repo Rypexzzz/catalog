@@ -550,12 +550,37 @@ function self_buildGroupedData(CartService $cart, Repository $repo): array
     $cartData   = $cart->getAll();
     $byRoot     = [];
 
+    // Резолвим имена специалистов команды для отображения в assignments.
+    $team       = $cart->getTeam();
+    $specNames  = [];
+    $bxIds      = array_filter(array_map(fn($m) => (int)($m['bitrixUserId'] ?? 0), $team));
+    if (!empty($bxIds)) {
+        $rsU = \CUser::GetList(
+            'ID', 'ASC',
+            ['ID' => implode('|', array_unique($bxIds))],
+            ['SELECT' => ['ID', 'NAME', 'LAST_NAME', 'LOGIN']]
+        );
+        $byUserId = [];
+        while ($u = $rsU->Fetch()) {
+            $byUserId[(int)$u['ID']] = trim($u['NAME'] . ' ' . $u['LAST_NAME']) ?: $u['LOGIN'];
+        }
+        foreach ($team as $specId => $m) {
+            $name = $byUserId[(int)($m['bitrixUserId'] ?? 0)] ?? '—';
+            $specNames[$specId] = $name;
+        }
+    }
+
     foreach ($cartData as $sid => &$svc) {
         $level = $svc['SERVICE_LEVEL'] ?? CostCalculator::LEVEL_MEDIUM;
         $base  = 0;
         foreach ($svc['ROLES'] as &$role) {
             $role['ROLE_NAME']  = $rolesById[(int)($role['ROLE_ID'] ?? 0)]['NAME'] ?? '';
             $role['GRADE_NAME'] = $gradesById[$role['GRADE_ID'] ?? 0]['NAME'] ?? '';
+            foreach ($role['ASSIGNMENTS'] ?? [] as &$a) {
+                $a['SPEC_NAME']  = $a['SPEC_ID'] ? ($specNames[$a['SPEC_ID']] ?? '—') : '—';
+                $a['GRADE_NAME'] = $gradesById[$a['GRADE_ID'] ?? 0]['NAME'] ?? '';
+            }
+            unset($a);
             $base += ($role['RATE'] ?? 0) * ($role['HOURS'] ?? 0);
         }
         unset($role);

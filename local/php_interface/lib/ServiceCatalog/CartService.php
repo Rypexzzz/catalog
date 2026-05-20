@@ -450,31 +450,43 @@ class CartService
         $totalHours = 0.0;
         $totalCost  = 0.0;
         $firstSpec  = null;
+        $assignmentsView = [];
 
         foreach ($role['assignments'] ?? [] as $a) {
-            $hours = (float)($a['hours'] ?? 0);
+            $hours  = (float)($a['hours'] ?? 0);
             $specId = $a['specialistId'] ?? null;
-            $rate  = ($specId !== null && isset($team[$specId])) ? (float)$team[$specId]['rate'] : 0.0;
+            $member = ($specId !== null && isset($team[$specId])) ? $team[$specId] : null;
+            $rate   = $member ? (float)$member['rate'] : 0.0;
 
             $totalHours += $hours;
             $totalCost  += $rate * $hours;
 
-            if ($firstSpec === null && $specId !== null && isset($team[$specId])) {
-                $firstSpec = $team[$specId];
+            if ($firstSpec === null && $member) {
+                $firstSpec = $member;
             }
+
+            $assignmentsView[] = [
+                'ASSIGNMENT_ID' => $a['id'] ?? '',
+                'SPEC_ID'       => $specId,
+                'GRADE_ID'      => $member ? (int)($member['gradeId'] ?? 0) : 0,
+                'RATE'          => $rate,
+                'HOURS'         => $hours,
+                'COST'          => round($rate * $hours),
+            ];
         }
 
         $effectiveRate = $totalHours > 0 ? round($totalCost / $totalHours, 2) : 0.0;
 
         return [
-            'ROLE_ID'   => (int)($role['roleId'] ?? 0),
-            'ROLE_NAME' => $role['roleName'] ?? '',
-            'RESULT'    => $role['result'] ?? '',
-            'HOURS'     => $totalHours,
-            'STD_HOURS' => (float)($role['stdHours'] ?? 0),
-            'GRADE_ID'  => $firstSpec ? (int)($firstSpec['gradeId'] ?? 0) : 0,
-            'RATE'      => $effectiveRate,
-            'COST'      => round($totalCost),
+            'ROLE_ID'     => (int)($role['roleId'] ?? 0),
+            'ROLE_NAME'   => $role['roleName'] ?? '',
+            'RESULT'      => $role['result'] ?? '',
+            'HOURS'       => $totalHours,
+            'STD_HOURS'   => (float)($role['stdHours'] ?? 0),
+            'GRADE_ID'    => $firstSpec ? (int)($firstSpec['gradeId'] ?? 0) : 0,
+            'RATE'        => $effectiveRate,
+            'COST'        => round($totalCost),
+            'ASSIGNMENTS' => $assignmentsView,
         ];
     }
 

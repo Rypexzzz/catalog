@@ -6,6 +6,7 @@ use Bitrix\Highloadblock\HighloadBlockTable as HLBT;
 use Bitrix\Iblock\IblockTable;
 use Bitrix\Main\Loader;
 use Bitrix\Main\SystemException;
+use Bitrix\Main\UserTable;
 
 
 class Repository
@@ -456,5 +457,81 @@ if (empty($rolesData)) {
         }
 
         return ['success' => true, 'serviceId' => $newId, 'rolesAdded' => $rolesAdded];
+    }
+
+    /* ================================================================
+       ПОИСК БИТРИКС-ПОЛЬЗОВАТЕЛЕЙ
+       ================================================================ */
+
+    /**
+     * Единый поиск активных Bitrix-пользователей с фото — для подбора
+     * членов команды, выдачи доступов к черновикам и т.п.
+     *
+     * @param string $query    Подстрока (по NAME / LAST_NAME / LOGIN, опц. EMAIL).
+     * @param array  $opts     {
+     *   @var int   $limit       Сколько вернуть, по умолчанию 20.
+     *   @var int   $minLength   Минимальная длина запроса, по умолчанию 2.
+     *   @var int[] $excludeIds  Исключить эти ID из результатов.
+     *   @var bool  $searchEmail Искать ли по EMAIL (по умолчанию да).
+     * }
+     * @return array<int, array{id:int, name:string, firstName:string, lastName:string, login:string, avatar:string}>
+     */
+    public function searchBitrixUsers(string $query, array $opts = []): array
+    {
+        $limit       = (int)($opts['limit']      ?? 20);
+        $minLength   = (int)($opts['minLength']  ?? 2);
+        $excludeIds  = array_map('intval', (array)($opts['excludeIds'] ?? []));
+        $searchEmail = (bool)($opts['searchEmail'] ?? true);
+
+        $query = trim($query);
+        if ($query === '' || mb_strlen($query) < $minLength) {
+            return [];
+        }
+
+        $or = [
+            'LOGIC'      => 'OR',
+            '%NAME'      => $query,
+            '%LAST_NAME' => $query,
+            '%LOGIN'     => $query,
+        ];
+        if ($searchEmail) {
+            $or['%EMAIL'] = $query;
+        }
+
+        $filter = [
+            '=ACTIVE' => 'Y',
+            $or,
+        ];
+        if (!empty($excludeIds)) {
+            $filter['!=ID'] = $excludeIds;
+        }
+
+        $rs = UserTable::getList([
+            'select' => ['ID', 'NAME', 'LAST_NAME', 'LOGIN', 'PERSONAL_PHOTO'],
+            'filter' => $filter,
+            'order'  => ['LAST_NAME' => 'ASC', 'NAME' => 'ASC'],
+            'limit'  => $limit,
+        ]);
+
+        $users = [];
+        while ($u = $rs->fetch()) {
+            $photo = '';
+            if (!empty($u['PERSONAL_PHOTO'])) {
+                $file = \CFile::GetFileArray($u['PERSONAL_PHOTO']);
+                if ($file) {
+                    $photo = (string)$file['SRC'];
+                }
+            }
+            $fullName = trim(($u['NAME'] ?? '') . ' ' . ($u['LAST_NAME'] ?? ''));
+            $users[] = [
+                'id'        => (int)$u['ID'],
+                'name'      => $fullName !== '' ? $fullName : (string)($u['LOGIN'] ?? ''),
+                'firstName' => (string)($u['NAME'] ?? ''),
+                'lastName'  => (string)($u['LAST_NAME'] ?? ''),
+                'login'     => (string)($u['LOGIN'] ?? ''),
+                'avatar'    => $photo,
+            ];
+        }
+        return $users;
     }
 }

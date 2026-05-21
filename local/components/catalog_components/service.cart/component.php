@@ -214,43 +214,10 @@ if ($req->isPost() && $req['ajax'] === 'Y') {
                 $response = ['success' => 0, 'error' => 'Необходима авторизация'];
                 break;
             }
-            $search = trim($req['search'] ?? '');
-            $users  = [];
-            
-            if (mb_strlen($search) >= 2) {
-                $rs = \Bitrix\Main\UserTable::getList([
-                    'select' => ['ID', 'NAME', 'LAST_NAME', 'PERSONAL_PHOTO'],
-                    'filter' => [
-                        '=ACTIVE' => 'Y',
-                        [
-                            'LOGIC' => 'OR',
-                            '%NAME'      => $search,
-                            '%LAST_NAME' => $search,
-                            '%LOGIN'     => $search,
-                            '%EMAIL'     => $search,
-                        ],
-                    ],
-                    'order' => ['LAST_NAME' => 'ASC'],
-                    'limit' => 20,
-                ]);
-                
-                while ($user = $rs->fetch()) {
-                    $photo = '';
-                    if ($user['PERSONAL_PHOTO']) {
-                        $file = \CFile::GetFileArray($user['PERSONAL_PHOTO']);
-                        if ($file) {
-                            $photo = $file['SRC'];
-                        }
-                    }
-                    $users[] = [
-                        'id'     => (int)$user['ID'],
-                        'name'   => trim($user['NAME'] . ' ' . $user['LAST_NAME']),
-                        'avatar' => $photo,
-                    ];
-                }
-            }
-            
-            $response = ['success' => 1, 'users' => $users];
+            $response = [
+                'success' => 1,
+                'users'   => $repo->searchBitrixUsers((string)($req['search'] ?? '')),
+            ];
             break;
 
         case 'getUsersInfo':

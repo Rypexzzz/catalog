@@ -6,6 +6,23 @@ if (window.__SERVICE_CART_JS__) {
     BX.ready(() => {
         const config = window.__CART_CONFIG__ || {};
         const fmt = (n) => Number(n).toLocaleString('ru-RU', { maximumFractionDigits: 0 });
+
+        /**
+         * Ставит на кнопку CSS-класс is-loading (показывает спиннер) и
+         * блокирует её на время выполнения fn. Снимает класс/disabled
+         * в finally — даже если fn выбросил исключение.
+         */
+        const withLoading = async (btn, fn) => {
+            if (!btn) return await fn();
+            btn.classList.add('is-loading');
+            btn.disabled = true;
+            try {
+                return await fn();
+            } finally {
+                btn.classList.remove('is-loading');
+                btn.disabled = false;
+            }
+        };
         const $ = (sel, ctx = document) => ctx.querySelector(sel);
         const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
 
@@ -487,18 +504,20 @@ if (window.__SERVICE_CART_JS__) {
                     'Удалить услугу из корзины?',
                     async (ok) => {
                         if (!ok) return;
-                        const r = await ajax('removeService', { serviceId: sid });
-                        if (r && r.success === false) {
-                            showAlert(r.error || 'Ошибка');
-                            return;
-                        }
-                        card?.remove();
-                        recalcGrand();
-                        updateEmptyState();
-                        $$('.cart-section').forEach((sec) => {
-                            if (!sec.querySelector('.cart-card')) sec.remove();
+                        await withLoading(delBtn, async () => {
+                            const r = await ajax('removeService', { serviceId: sid });
+                            if (r && r.success === false) {
+                                showAlert(r.error || 'Ошибка');
+                                return;
+                            }
+                            card?.remove();
+                            recalcGrand();
+                            updateEmptyState();
+                            $$('.cart-section').forEach((sec) => {
+                                if (!sec.querySelector('.cart-card')) sec.remove();
+                            });
+                            markDirty();
                         });
-                        markDirty();
                     },
                     { danger: true, okText: 'Удалить' }
                 );
@@ -1305,15 +1324,15 @@ if (window.__SERVICE_CART_JS__) {
                 const serviceId = roleBlock?.dataset.service;
                 const roleId    = roleBlock?.dataset.role;
                 if (!serviceId || !roleId) return;
-                addBtn.disabled = true;
-                const d = await ajax('addAssignment', { serviceId, roleId });
-                addBtn.disabled = false;
-                if (d.success) {
-                    // простой путь — перезагружаем, чтобы заново отрендерить
-                    location.reload();
-                } else {
-                    showAlert(d.error || 'Не удалось добавить назначение');
-                }
+                await withLoading(addBtn, async () => {
+                    const d = await ajax('addAssignment', { serviceId, roleId });
+                    if (d.success) {
+                        // простой путь — перезагружаем, чтобы заново отрендерить
+                        location.reload();
+                    } else {
+                        showAlert(d.error || 'Не удалось добавить назначение');
+                    }
+                });
                 return;
             }
 
@@ -1326,18 +1345,18 @@ if (window.__SERVICE_CART_JS__) {
                 const roleId       = roleBlock?.dataset.role;
                 const assignmentId = assignmentEl?.dataset.assignmentId;
                 if (!serviceId || !roleId || !assignmentId) return;
-                rmBtn.disabled = true;
-                const d = await ajax('removeAssignment', { serviceId, roleId, assignmentId });
-                if (d.success) {
-                    assignmentEl.remove();
-                    recalcCardSum(card);
-                    const gv = $('#grand-val');
-                    if (gv && typeof d.total !== 'undefined') gv.textContent = fmtCost(d.total);
-                    markDirty();
-                } else {
-                    showAlert(d.error || 'Не удалось убрать назначение');
-                    rmBtn.disabled = false;
-                }
+                await withLoading(rmBtn, async () => {
+                    const d = await ajax('removeAssignment', { serviceId, roleId, assignmentId });
+                    if (d.success) {
+                        assignmentEl.remove();
+                        recalcCardSum(card);
+                        const gv = $('#grand-val');
+                        if (gv && typeof d.total !== 'undefined') gv.textContent = fmtCost(d.total);
+                        markDirty();
+                    } else {
+                        showAlert(d.error || 'Не удалось убрать назначение');
+                    }
+                });
                 return;
             }
         });
@@ -1409,6 +1428,7 @@ if (window.__SERVICE_CART_JS__) {
 
         $('#team-add-btn')?.addEventListener('click', async (e) => {
             e.preventDefault();
+            const btn = e.currentTarget;
             const bitrixUserId = parseInt(teamUserIdInput?.value || '0', 10);
             const rate         = parseInt($('#team-rate-input')?.value || '0', 10);
             const gradeId      = parseInt($('#team-grade-select')?.value || '0', 10);
@@ -1416,9 +1436,11 @@ if (window.__SERVICE_CART_JS__) {
             if (!bitrixUserId) { showAlert('Выберите сотрудника из списка'); return; }
             if (!rate || rate < 0) { showAlert('Укажите ставку ₽/час'); return; }
 
-            const d = await ajax('addTeamMember', { bitrixUserId, rate, gradeId: gradeId || '' });
-            if (d.success) { location.reload(); }
-            else { showAlert(d.error || 'Не удалось добавить специалиста'); }
+            await withLoading(btn, async () => {
+                const d = await ajax('addTeamMember', { bitrixUserId, rate, gradeId: gradeId || '' });
+                if (d.success) { location.reload(); }
+                else { showAlert(d.error || 'Не удалось добавить специалиста'); }
+            });
         });
 
         $('#team-list')?.addEventListener('change', async (e) => {
@@ -1452,9 +1474,11 @@ if (window.__SERVICE_CART_JS__) {
 
             showConfirm('Убрать специалиста из команды? Все его назначения будут сняты.', async (ok) => {
                 if (!ok) return;
-                const d = await ajax('removeTeamMember', { specialistId });
-                if (d.success) { location.reload(); }
-                else { showAlert(d.error || 'Не удалось удалить'); }
+                await withLoading(rm, async () => {
+                    const d = await ajax('removeTeamMember', { specialistId });
+                    if (d.success) { location.reload(); }
+                    else { showAlert(d.error || 'Не удалось удалить'); }
+                });
             });
         });
 

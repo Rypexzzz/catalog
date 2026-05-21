@@ -255,52 +255,26 @@ class DraftAccessRepository
         return $users;
     }
 
+    /**
+     * Тонкий адаптер над Repository::searchBitrixUsers — сохраняет
+     * исторический контракт {id, name, photo} (последнее поле — это alias
+     * к новому avatar), плюс не ищет по EMAIL, как было исторически.
+     */
     public function searchUsers(string $query, int $limit = 20, array $excludeIds = []): array
     {
-        $query = trim($query);
-        if (mb_strlen($query) < 2) return [];
-
-        $filter = [
-            'ACTIVE' => 'Y',
-            [
-                'LOGIC' => 'OR',
-                '%NAME'      => $query,
-                '%LAST_NAME' => $query,
-                '%LOGIN'     => $query,
-            ],
-        ];
-
-        if (!empty($excludeIds)) {
-            $filter['!ID'] = $excludeIds;
-        }
-
-        $users = [];
-        $rs = \CUser::GetList(
-            'LAST_NAME',
-            'ASC',
-            $filter,
-            [
-                'SELECT'     => ['ID', 'NAME', 'LAST_NAME', 'PERSONAL_PHOTO'],
-                'NAV_PARAMS' => ['nTopCount' => $limit],
-            ]
-        );
-
-        while ($user = $rs->Fetch()) {
-            $photo = '';
-            if (!empty($user['PERSONAL_PHOTO'])) {
-                $file = \CFile::GetFileArray($user['PERSONAL_PHOTO']);
-                if ($file) {
-                    $photo = $file['SRC'];
-                }
-            }
-
-            $users[] = [
-                'id'    => (int)$user['ID'],
-                'name'  => trim($user['NAME'] . ' ' . $user['LAST_NAME']) ?: $user['LOGIN'],
-                'photo' => $photo,
+        $users = (new Repository())->searchBitrixUsers($query, [
+            'limit'       => $limit,
+            'excludeIds'  => $excludeIds,
+            'searchEmail' => false,
+        ]);
+        $legacy = [];
+        foreach ($users as $u) {
+            $legacy[] = [
+                'id'    => $u['id'],
+                'name'  => $u['name'],
+                'photo' => $u['avatar'],
             ];
         }
-
-        return $users;
+        return $legacy;
     }
 }

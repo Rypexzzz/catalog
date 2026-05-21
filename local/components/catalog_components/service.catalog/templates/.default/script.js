@@ -9,6 +9,23 @@ if (window.__SERVICE_CATALOG_JS__) {
     const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
     const fmt = n => Number(n).toLocaleString('ru-RU', { maximumFractionDigits: 0 });
 
+    /**
+     * Ставит на кнопку CSS-класс is-loading (показывает спиннер) и блокирует
+     * её на время выполнения fn. Снимает класс/disabled в finally — даже
+     * если fn выбросил исключение. Если кнопки нет — просто запускает fn.
+     */
+    const withLoading = async (btn, fn) => {
+      if (!btn) return await fn();
+      btn.classList.add('is-loading');
+      btn.disabled = true;
+      try {
+        return await fn();
+      } finally {
+        btn.classList.remove('is-loading');
+        btn.disabled = false;
+      }
+    };
+
     let rows        = $$('.sc-row');
     const search    = $('#service-search');
     const roleFilter = $('#role-filter');
@@ -568,7 +585,6 @@ if (window.__SERVICE_CATALOG_JS__) {
         const serviceId = statusBtn.dataset.id;
         const row       = statusBtn.closest('.sc-row');
         const det       = $(`.sc-details[data-id="${serviceId}"]`);
-        statusBtn.disabled = true;
 
         let level = 'medium';
         const rootSection = row?.dataset.rootSection || '';
@@ -579,32 +595,34 @@ if (window.__SERVICE_CATALOG_JS__) {
           if (checked) level = checked.value;
         }
 
-        BX.ajax.post(location.href, {
-          ajax: 'Y',
-          sessid: BX.bitrix_sessid(),
-          action: isAdd ? 'addService' : 'removeService',
-          serviceId, level, rootSection, sectionName
-        }, resp => {
-          try {
-            const j = JSON.parse(resp);
-            if (j.success) {
-              statusBtn.classList.toggle('is-added', isAdd);
-              statusBtn.querySelector('.sc-btn-status__icon').textContent = isAdd ? '✓' : '+';
-              statusBtn.querySelector('.sc-btn-status__text').textContent = isAdd ? 'Добавлено' : 'Добавить';
-              if (row) {
-                row.dataset.inCart = isAdd ? '1' : '0';
-                row.classList.toggle('sc-row--active', isAdd);
+        withLoading(statusBtn, () => new Promise((resolve) => {
+          BX.ajax.post(location.href, {
+            ajax: 'Y',
+            sessid: BX.bitrix_sessid(),
+            action: isAdd ? 'addService' : 'removeService',
+            serviceId, level, rootSection, sectionName
+          }, resp => {
+            try {
+              const j = JSON.parse(resp);
+              if (j.success) {
+                statusBtn.classList.toggle('is-added', isAdd);
+                statusBtn.querySelector('.sc-btn-status__icon').textContent = isAdd ? '✓' : '+';
+                statusBtn.querySelector('.sc-btn-status__text').textContent = isAdd ? 'Добавлено' : 'Добавить';
+                if (row) {
+                  row.dataset.inCart = isAdd ? '1' : '0';
+                  row.classList.toggle('sc-row--active', isAdd);
+                }
+                updateTotal(j.total);
+                // После добавления/удаления услуги — перезагрузим, чтобы перерисовать содержимое карточки.
+                // (UI сразу выходит из режима «не настроена», и наоборот.)
+                setTimeout(() => location.reload(), 200);
+              } else if (j.error) {
+                showCatalogAlert(j.error);
               }
-              updateTotal(j.total);
-              // После добавления/удаления услуги — перезагрузим, чтобы перерисовать содержимое карточки.
-              // (UI сразу выходит из режима «не настроена», и наоборот.)
-              setTimeout(() => location.reload(), 200);
-            } else if (j.error) {
-              showCatalogAlert(j.error);
-            }
-          } catch (e) { console.error(e); }
-          statusBtn.disabled = false;
-        });
+            } catch (e) { console.error(e); }
+            resolve();
+          });
+        }));
       }
     });
 
@@ -813,39 +831,41 @@ if (window.__SERVICE_CATALOG_JS__) {
 
         const btnMain = $('#admin-save-btn');
         const btnMore = $('#admin-save-add-btn');
-        [btnMain, btnMore].forEach(b => { if (b) b.disabled = true; });
-        if (btnMain) btnMain.textContent = 'Сохранение…';
-        if (btnMore) btnMore.textContent = 'Сохранение…';
+        // Спиннер показываем на той кнопке, которую пользователь нажал;
+        // другую — просто блокируем, чтобы не было гонок.
+        const activeBtn = andCreateAnother ? btnMore : btnMain;
+        const otherBtn  = andCreateAnother ? btnMain : btnMore;
+        if (otherBtn) otherBtn.disabled = true;
 
-        BX.ajax.post(location.href, {
-          ajax: 'Y',
-          sessid: BX.bitrix_sessid(),
-          action: 'createService',
-          serviceName: name, sectionId, minCriteria: criteria, roles: rolesData
-        }, resp => {
-          try {
-            const d = JSON.parse(resp);
-            if (d.success) {
-              setAddedCount(addedCount + 1);
-              addCreatedItem({ name, sectionLabel: getSectionLabel() });
+        withLoading(activeBtn, () => new Promise((resolve) => {
+          BX.ajax.post(location.href, {
+            ajax: 'Y',
+            sessid: BX.bitrix_sessid(),
+            action: 'createService',
+            serviceName: name, sectionId, minCriteria: criteria, roles: rolesData
+          }, resp => {
+            try {
+              const d = JSON.parse(resp);
+              if (d.success) {
+                setAddedCount(addedCount + 1);
+                addCreatedItem({ name, sectionLabel: getSectionLabel() });
 
-              if (andCreateAnother) {
-                resetAdminForm();
+                if (andCreateAnother) {
+                  resetAdminForm();
+                } else {
+                  // финал: показываем статус и перезагружаем страницу
+                  closeAdminModal();
+                  showCatalogAlert(`Добавлено услуг: ${addedCount}`);
+                  setTimeout(() => { location.reload(); }, 1200);
+                }
               } else {
-                // финал: показываем статус и перезагружаем страницу
-                closeAdminModal();
-                showCatalogAlert(`Добавлено услуг: ${addedCount}`);
-                setTimeout(() => { location.reload(); }, 1200);
+                showCatalogAlert(d.error || 'Ошибка');
               }
-            } else {
-              showCatalogAlert(d.error || 'Ошибка');
-            }
-          } catch (e) { showCatalogAlert('Ошибка сервера'); }
-          if (btnMain) btnMain.disabled = false;
-          if (btnMore) btnMore.disabled = false;
-          if (btnMain) btnMain.textContent = 'Сохранить';
-          if (btnMore) btnMore.textContent = 'Сохранить и создать ещё';
-        });
+            } catch (e) { showCatalogAlert('Ошибка сервера'); }
+            if (otherBtn) otherBtn.disabled = false;
+            resolve();
+          });
+        }));
       };
 
       $('#admin-save-btn').addEventListener('click', () => submitAdminService({andCreateAnother:false}));
@@ -928,15 +948,15 @@ if (window.__SERVICE_CATALOG_JS__) {
         const serviceId = roleBlock?.dataset.service;
         const roleId    = roleBlock?.dataset.role;
         if (!serviceId || !roleId) return;
-        addBtn.disabled = true;
-        const d = await ajax({ action: 'addAssignment', serviceId, roleId });
-        addBtn.disabled = false;
-        if (d.success) {
-          // Простейший вариант: перерисовать страницу. Альтернатива — клонировать DOM.
-          location.reload();
-        } else {
-          showCatalogAlert(d.error || 'Не удалось добавить назначение');
-        }
+        await withLoading(addBtn, async () => {
+          const d = await ajax({ action: 'addAssignment', serviceId, roleId });
+          if (d.success) {
+            // Простейший вариант: перерисовать страницу. Альтернатива — клонировать DOM.
+            location.reload();
+          } else {
+            showCatalogAlert(d.error || 'Не удалось добавить назначение');
+          }
+        });
         return;
       }
 
@@ -948,16 +968,16 @@ if (window.__SERVICE_CATALOG_JS__) {
         const roleId       = roleBlock?.dataset.role;
         const assignmentId = assignmentEl?.dataset.assignmentId;
         if (!serviceId || !roleId || !assignmentId) return;
-        rmBtn.disabled = true;
-        const d = await ajax({ action: 'removeAssignment', serviceId, roleId, assignmentId });
-        if (d.success) {
-          assignmentEl.remove();
-          updateServiceCostInRow(serviceId);
-          updateTotal(d.total);
-        } else {
-          showCatalogAlert(d.error || 'Не удалось убрать назначение');
-          rmBtn.disabled = false;
-        }
+        await withLoading(rmBtn, async () => {
+          const d = await ajax({ action: 'removeAssignment', serviceId, roleId, assignmentId });
+          if (d.success) {
+            assignmentEl.remove();
+            updateServiceCostInRow(serviceId);
+            updateTotal(d.total);
+          } else {
+            showCatalogAlert(d.error || 'Не удалось убрать назначение');
+          }
+        });
         return;
       }
     });
@@ -1036,6 +1056,7 @@ if (window.__SERVICE_CATALOG_JS__) {
     // Добавить специалиста
     $('#team-add-btn')?.addEventListener('click', async (e) => {
       e.preventDefault();
+      const btn = e.currentTarget;
       const bitrixUserId = parseInt(teamUserIdInput?.value || '0', 10);
       const rate         = parseInt($('#team-rate-input')?.value || '0', 10);
       const gradeId      = parseInt($('#team-grade-select')?.value || '0', 10);
@@ -1043,9 +1064,11 @@ if (window.__SERVICE_CATALOG_JS__) {
       if (!bitrixUserId) { showCatalogAlert('Выберите сотрудника из списка'); return; }
       if (!rate || rate < 0) { showCatalogAlert('Укажите ставку ₽/час'); return; }
 
-      const d = await ajax({ action: 'addTeamMember', bitrixUserId, rate, gradeId: gradeId || '' });
-      if (d.success) { location.reload(); }
-      else { showCatalogAlert(d.error || 'Не удалось добавить специалиста'); }
+      await withLoading(btn, async () => {
+        const d = await ajax({ action: 'addTeamMember', bitrixUserId, rate, gradeId: gradeId || '' });
+        if (d.success) { location.reload(); }
+        else { showCatalogAlert(d.error || 'Не удалось добавить специалиста'); }
+      });
     });
 
     // Изменение/удаление существующего специалиста — обработчики в списке
@@ -1073,9 +1096,11 @@ if (window.__SERVICE_CATALOG_JS__) {
 
       showCatalogConfirm('Убрать специалиста из команды? Все его назначения будут сняты.', async (ok) => {
         if (!ok) return;
-        const d = await ajax({ action: 'removeTeamMember', specialistId });
-        if (d.success) { location.reload(); }
-        else { showCatalogAlert(d.error || 'Не удалось удалить'); }
+        await withLoading(rm, async () => {
+          const d = await ajax({ action: 'removeTeamMember', specialistId });
+          if (d.success) { location.reload(); }
+          else { showCatalogAlert(d.error || 'Не удалось удалить'); }
+        });
       });
     });
 

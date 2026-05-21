@@ -315,70 +315,130 @@ $selectedRoles = array_values(array_filter(array_map('intval', (array)($_GET['ro
 </div>
 
 <!-- Модалка команды проекта -->
-<div id="team-modal" class="sc-modal">
-  <div class="sc-modal__box sc-modal__box--wide">
-    <div class="sc-modal__head">
-      <h3>Команда проекта</h3>
-      <button class="sc-modal__close" type="button" data-close-team>&times;</button>
-    </div>
-    <div class="sc-modal__body">
-      <div class="sc-team-list" id="team-list">
-        <?php if (empty($arResult['TEAM'])): ?>
-          <div class="sc-team-empty">Команда пока пуста. Добавьте специалистов ниже.</div>
-        <?php else: foreach ($arResult['TEAM'] as $m): ?>
-          <div class="sc-team-row" data-spec-id="<?= htmlspecialcharsbx($m['id']) ?>">
-            <div class="sc-team-row__user">
-              <?php if ($m['photo']): ?>
-                <img src="<?= htmlspecialcharsbx($m['photo']) ?>" alt="" class="sc-team-row__avatar">
-              <?php else: ?>
-                <span class="sc-team-row__avatar sc-team-row__avatar--ph"><?= mb_substr($m['name'], 0, 1) ?></span>
-              <?php endif; ?>
-              <div class="sc-team-row__name"><?= htmlspecialcharsbx($m['name']) ?></div>
-            </div>
-            <select class="sc-input sc-input--select-sm sc-team-row__grade">
-              <option value="">— грейд —</option>
-              <?php foreach ($arResult['GRADES'] as $gid => $g): ?>
-                <option value="<?= $gid ?>" <?= ($m['gradeId'] == $gid) ? 'selected' : '' ?>><?= htmlspecialcharsbx($g['NAME']) ?></option>
-              <?php endforeach; ?>
-            </select>
-            <input type="number" min="0" class="sc-input sc-input--number sc-team-row__rate" value="<?= (int)$m['rate'] ?>" placeholder="Ставка ₽/ч">
-            <button type="button" class="sc-btn-icon sc-btn-icon--danger sc-team-row__remove" title="Удалить из команды" aria-label="Удалить из команды">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-              </svg>
-            </button>
-          </div>
-        <?php endforeach; endif; ?>
+<div id="team-modal" class="sc-modal team-modal">
+  <div class="sc-modal__box team-modal__box">
+    <header class="team-modal__header">
+      <div class="team-modal__title-row">
+        <div class="team-modal__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 2a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm0 2c-2.67 0-8 1.34-8 4v2h9v-2.13c0-1.04.31-2.01.85-2.83A11.27 11.27 0 0 0 8 15Zm8 0c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4Z" fill="currentColor"/>
+          </svg>
+        </div>
+        <div class="team-modal__heading">
+          <h3 class="team-modal__title">Команда проекта</h3>
+          <p class="team-modal__subtitle">Назначайте сотрудников на роли в услугах</p>
+        </div>
       </div>
+      <button class="team-modal__close" type="button" data-close-team aria-label="Закрыть">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </header>
 
-      <div class="sc-team-add">
-        <div class="sc-team-add__title">Добавить специалиста</div>
-        <div class="sc-team-add__row">
-          <div class="sc-team-add__user">
-            <input type="text" id="team-user-search" class="sc-input" placeholder="Поиск сотрудника…" autocomplete="off">
-            <div class="sc-team-add__results" id="team-user-results"></div>
+    <div class="team-modal__body">
+      <!-- Форма добавления -->
+      <section class="team-add">
+        <h4 class="team-section__title">Добавить специалиста</h4>
+        <div class="team-add__form">
+          <div class="team-add__picker" id="team-user-picker">
+            <div class="team-add__picker-field">
+              <span class="team-add__picker-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none">
+                  <path d="M9 15a6 6 0 1 0 0-12 6 6 0 0 0 0 12ZM18 18l-3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+              <input type="text" id="team-user-search" class="team-add__picker-input"
+                     placeholder="Имя или фамилия сотрудника" autocomplete="off" inputmode="search">
+              <span class="team-add__picker-spinner" id="team-user-spinner" hidden></span>
+            </div>
+            <div class="team-add__chip" id="team-user-selected" hidden></div>
             <input type="hidden" id="team-user-id" value="">
-            <div class="sc-team-add__selected" id="team-user-selected" style="display:none"></div>
+            <div class="team-add__results" id="team-user-results" hidden role="listbox" aria-label="Результаты поиска"></div>
           </div>
-          <select class="sc-input sc-input--select-sm" id="team-grade-select">
-            <option value="">— грейд —</option>
+
+          <select class="team-add__grade" id="team-grade-select" aria-label="Грейд">
+            <option value="">Грейд</option>
             <?php foreach ($arResult['GRADES'] as $gid => $g): ?>
               <option value="<?= $gid ?>"><?= htmlspecialcharsbx($g['NAME']) ?></option>
             <?php endforeach; ?>
           </select>
-          <input type="number" min="0" id="team-rate-input" class="sc-input sc-input--number" placeholder="Ставка ₽/ч">
-          <button type="button" class="sc-btn sc-btn--primary sc-btn--sm" id="team-add-btn">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+
+          <div class="team-add__rate">
+            <input type="number" min="0" inputmode="numeric" id="team-rate-input"
+                   class="team-add__rate-input" placeholder="0" aria-label="Ставка в рублях за час">
+            <span class="team-add__rate-suffix">₽/ч</span>
+          </div>
+
+          <button type="button" class="sc-btn sc-btn--primary team-add__submit" id="team-add-btn">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
-            Добавить
+            <span>Добавить</span>
           </button>
         </div>
-      </div>
+      </section>
+
+      <!-- Список команды -->
+      <section class="team-members">
+        <h4 class="team-section__title">
+          В команде
+          <span class="team-section__count" id="team-members-count"><?= count($arResult['TEAM']) ?></span>
+        </h4>
+
+        <div class="team-members__list" id="team-list">
+          <?php if (empty($arResult['TEAM'])): ?>
+            <div class="team-empty">
+              <div class="team-empty__icon" aria-hidden="true">
+                <svg viewBox="0 0 56 56" fill="none">
+                  <circle cx="28" cy="28" r="27.5" stroke="currentColor" stroke-opacity=".15"/>
+                  <path d="M36 24a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-16 4a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm0 3c-3 0-9 1.5-9 4.5V38h10v-2.4c0-1.16.34-2.25.94-3.16A12.74 12.74 0 0 0 20 31Zm12 0c-3 0-9 1.5-9 4.5V38h18v-2.5c0-3-6-4.5-9-4.5Z" fill="currentColor" fill-opacity=".25"/>
+                </svg>
+              </div>
+              <p class="team-empty__title">Пока никого нет</p>
+              <p class="team-empty__hint">Найдите сотрудника и укажите его ставку — она используется в расчёте стоимости услуг</p>
+            </div>
+          <?php else: foreach ($arResult['TEAM'] as $m): ?>
+            <article class="team-member" data-spec-id="<?= htmlspecialcharsbx($m['id']) ?>">
+              <?php if ($m['photo']): ?>
+                <img src="<?= htmlspecialcharsbx($m['photo']) ?>" alt="" class="team-member__avatar">
+              <?php else: ?>
+                <span class="team-member__avatar team-member__avatar--ph" aria-hidden="true"><?= mb_strtoupper(mb_substr($m['name'], 0, 1)) ?></span>
+              <?php endif; ?>
+
+              <div class="team-member__info">
+                <div class="team-member__name"><?= htmlspecialcharsbx($m['name']) ?></div>
+                <?php if ($m['gradeName']): ?>
+                  <div class="team-member__meta"><?= htmlspecialcharsbx($m['gradeName']) ?></div>
+                <?php endif; ?>
+              </div>
+
+              <select class="team-member__grade" aria-label="Грейд">
+                <option value="">— не указан —</option>
+                <?php foreach ($arResult['GRADES'] as $gid => $g): ?>
+                  <option value="<?= $gid ?>" <?= ($m['gradeId'] == $gid) ? 'selected' : '' ?>><?= htmlspecialcharsbx($g['NAME']) ?></option>
+                <?php endforeach; ?>
+              </select>
+
+              <div class="team-member__rate">
+                <input type="number" min="0" inputmode="numeric" class="team-member__rate-input" value="<?= (int)$m['rate'] ?>" aria-label="Ставка в рублях за час">
+                <span class="team-member__rate-suffix">₽/ч</span>
+              </div>
+
+              <button type="button" class="team-member__remove" title="Убрать из команды" aria-label="Убрать из команды">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M2 4h12M5.5 4V2.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V4M12 4v9.5a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 4 13.5V4h8Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </article>
+          <?php endforeach; endif; ?>
+        </div>
+      </section>
     </div>
-    <div class="sc-modal__foot">
-      <button class="sc-btn sc-btn--primary" type="button" data-close-team>Готово</button>
-    </div>
+
+    <footer class="team-modal__footer">
+      <button class="sc-btn sc-btn--ghost" type="button" data-close-team>Закрыть</button>
+    </footer>
   </div>
 </div>
 

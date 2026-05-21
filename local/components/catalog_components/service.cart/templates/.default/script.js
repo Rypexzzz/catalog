@@ -211,10 +211,10 @@ if (window.__SERVICE_CART_JS__) {
                 return [sid, level, roles].join('#');
             }).sort();
             // также подмешиваем команду, чтобы изменение ставок тоже считалось dirty
-            const team = $$('#team-list .sc-team-row').map((r) => {
+            const team = $$('#team-list .team-member').map((r) => {
                 const id   = String(r.dataset.specId || '');
-                const rate = String(r.querySelector('.sc-team-row__rate')?.value || '');
-                const grd  = String(r.querySelector('.sc-team-row__grade')?.value || '');
+                const rate = String(r.querySelector('.team-member__rate-input')?.value || '');
+                const grd  = String(r.querySelector('.team-member__grade')?.value || '');
                 return [id, rate, grd].join(':');
             }).sort().join(';');
             return cards.join('~') + '@@' + team;
@@ -1373,63 +1373,135 @@ if (window.__SERVICE_CART_JS__) {
             if (e.target.closest('[data-close-team]')) { e.preventDefault(); closeTeamModal(); }
         });
 
-        let searchTimer = null;
-        const teamSearchInput   = $('#team-user-search');
-        const teamSearchResults = $('#team-user-results');
-        const teamUserIdInput   = $('#team-user-id');
-        const teamUserSelected  = $('#team-user-selected');
+        /* ===== USER PICKER (cart) ===== */
+        const userPicker = (() => {
+            const pickerEl  = $('#team-user-picker');
+            const inputEl   = $('#team-user-search');
+            const resultsEl = $('#team-user-results');
+            const hiddenEl  = $('#team-user-id');
+            const chipEl    = $('#team-user-selected');
+            const spinnerEl = $('#team-user-spinner');
+            if (!pickerEl || !inputEl || !resultsEl) return null;
 
-        const renderUserResults = (users) => {
-            if (!teamSearchResults) return;
-            teamSearchResults.innerHTML = '';
-            if (!users.length) {
-                teamSearchResults.innerHTML = '<div class="sc-team-add__no-results">Ничего не найдено</div>';
-                return;
-            }
-            users.forEach((u) => {
-                const row = document.createElement('div');
-                row.className = 'sc-team-add__user-row';
-                row.dataset.userId = u.id;
-                row.innerHTML = `
-                    ${u.avatar ? `<img src="${u.avatar}" class="sc-team-row__avatar">` : `<span class="sc-team-row__avatar sc-team-row__avatar--ph">${BX.util.htmlspecialchars(u.name.charAt(0))}</span>`}
-                    <span>${BX.util.htmlspecialchars(u.name)}</span>
-                `;
-                row.addEventListener('click', () => {
-                    if (teamUserIdInput) teamUserIdInput.value = u.id;
-                    if (teamUserSelected) {
-                        teamUserSelected.style.display = '';
-                        teamUserSelected.innerHTML = row.innerHTML + ` <button type="button" class="sc-btn-icon" data-clear-user title="Сбросить" aria-label="Сбросить выбор"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>`;
-                    }
-                    if (teamSearchInput) { teamSearchInput.value = ''; teamSearchInput.style.display = 'none'; }
-                    teamSearchResults.innerHTML = '';
+            let searchTimer = null, currentReq = 0, focusedIndex = -1, currentUsers = [];
+            const escape  = (s) => BX.util.htmlspecialchars(String(s ?? ''));
+            const initial = (n) => (n || '?').trim().charAt(0).toUpperCase();
+
+            const showResults = () => { resultsEl.hidden = false; };
+            const hideResults = () => { resultsEl.hidden = true; focusedIndex = -1; };
+            const showSpinner = () => { if (spinnerEl) spinnerEl.hidden = false; };
+            const hideSpinner = () => { if (spinnerEl) spinnerEl.hidden = true; };
+
+            const setSelected = (user) => {
+                hiddenEl.value = user.id;
+                chipEl.hidden  = false;
+                chipEl.innerHTML = `
+                    ${user.avatar
+                      ? `<img src="${escape(user.avatar)}" class="team-add__chip-avatar" alt="">`
+                      : `<span class="team-add__chip-avatar team-add__chip-avatar--ph">${escape(initial(user.name))}</span>`}
+                    <span class="team-add__chip-name">${escape(user.name)}</span>
+                    <button type="button" class="team-add__chip-clear" title="Сбросить" aria-label="Сбросить выбор">
+                        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                            <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                        </svg>
+                    </button>`;
+                inputEl.value = '';
+                hideResults();
+            };
+
+            const clearSelected = () => {
+                hiddenEl.value = '';
+                chipEl.hidden  = true;
+                chipEl.innerHTML = '';
+                inputEl.focus();
+            };
+
+            const renderResults = (users) => {
+                currentUsers = users || [];
+                focusedIndex = -1;
+                if (!currentUsers.length) {
+                    resultsEl.innerHTML = '<div class="team-add__empty">Ничего не найдено</div>';
+                    showResults();
+                    return;
+                }
+                resultsEl.innerHTML = currentUsers.map((u, i) => `
+                    <div class="team-add__result-row" data-idx="${i}" role="option">
+                        ${u.avatar
+                          ? `<img src="${escape(u.avatar)}" class="team-add__result-avatar" alt="">`
+                          : `<span class="team-add__result-avatar team-add__result-avatar--ph">${escape(initial(u.name))}</span>`}
+                        <div style="min-width:0;flex:1 1 auto;">
+                            <div class="team-add__result-name">${escape(u.name)}</div>
+                            ${u.login ? `<div class="team-add__result-meta">${escape(u.login)}</div>` : ''}
+                        </div>
+                    </div>`).join('');
+                showResults();
+            };
+
+            const updateFocused = () => {
+                [...resultsEl.querySelectorAll('.team-add__result-row')].forEach((row, i) => {
+                    row.classList.toggle('is-focused', i === focusedIndex);
+                    if (i === focusedIndex) row.scrollIntoView({ block: 'nearest' });
                 });
-                teamSearchResults.appendChild(row);
+            };
+
+            const runSearch = () => {
+                const q = inputEl.value.trim();
+                if (searchTimer) clearTimeout(searchTimer);
+                if (q.length < 2) { hideResults(); hideSpinner(); return; }
+                showSpinner();
+                searchTimer = setTimeout(async () => {
+                    const myReq = ++currentReq;
+                    const d = await ajax('searchUsers', { search: q });
+                    if (myReq !== currentReq) return;
+                    hideSpinner();
+                    if (d.success) renderResults(d.users || []);
+                }, 220);
+            };
+
+            inputEl.addEventListener('input', runSearch);
+            inputEl.addEventListener('focus', () => {
+                if (currentUsers.length || inputEl.value.trim().length >= 2) showResults();
             });
-        };
+            inputEl.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown') {
+                    if (resultsEl.hidden) return;
+                    e.preventDefault();
+                    focusedIndex = Math.min(focusedIndex + 1, currentUsers.length - 1);
+                    updateFocused();
+                } else if (e.key === 'ArrowUp') {
+                    if (resultsEl.hidden) return;
+                    e.preventDefault();
+                    focusedIndex = Math.max(focusedIndex - 1, 0);
+                    updateFocused();
+                } else if (e.key === 'Enter') {
+                    if (focusedIndex >= 0 && currentUsers[focusedIndex]) {
+                        e.preventDefault();
+                        setSelected(currentUsers[focusedIndex]);
+                    }
+                } else if (e.key === 'Escape') {
+                    if (!resultsEl.hidden) { e.stopPropagation(); hideResults(); }
+                }
+            });
+            resultsEl.addEventListener('click', (e) => {
+                const row = e.target.closest('.team-add__result-row');
+                if (!row) return;
+                const idx = parseInt(row.dataset.idx, 10);
+                if (currentUsers[idx]) setSelected(currentUsers[idx]);
+            });
+            chipEl.addEventListener('click', (e) => {
+                if (e.target.closest('.team-add__chip-clear')) clearSelected();
+            });
+            document.addEventListener('click', (e) => {
+                if (!pickerEl.contains(e.target)) hideResults();
+            });
 
-        teamSearchInput?.addEventListener('input', () => {
-            const q = teamSearchInput.value.trim();
-            if (searchTimer) clearTimeout(searchTimer);
-            if (q.length < 2) { teamSearchResults.innerHTML = ''; return; }
-            searchTimer = setTimeout(async () => {
-                const d = await ajax('searchUsers', { search: q });
-                if (d.success) renderUserResults(d.users || []);
-            }, 250);
-        });
-
-        teamUserSelected?.addEventListener('click', (e) => {
-            if (e.target.closest('[data-clear-user]')) {
-                if (teamUserIdInput) teamUserIdInput.value = '';
-                teamUserSelected.style.display = 'none';
-                teamUserSelected.innerHTML = '';
-                if (teamSearchInput) { teamSearchInput.style.display = ''; teamSearchInput.focus(); }
-            }
-        });
+            return { clear: clearSelected };
+        })();
 
         $('#team-add-btn')?.addEventListener('click', async (e) => {
             e.preventDefault();
             const btn = e.currentTarget;
-            const bitrixUserId = parseInt(teamUserIdInput?.value || '0', 10);
+            const bitrixUserId = parseInt($('#team-user-id')?.value || '0', 10);
             const rate         = parseInt($('#team-rate-input')?.value || '0', 10);
             const gradeId      = parseInt($('#team-grade-select')?.value || '0', 10);
 
@@ -1444,22 +1516,22 @@ if (window.__SERVICE_CART_JS__) {
         });
 
         $('#team-list')?.addEventListener('change', async (e) => {
-            const row = e.target.closest('.sc-team-row');
+            const row = e.target.closest('.team-member');
             if (!row) return;
             const specialistId = row.dataset.specId;
-            if (e.target.matches('.sc-team-row__rate')) {
+            if (e.target.matches('.team-member__rate-input')) {
                 const rate = Math.max(0, parseInt(e.target.value, 10) || 0);
                 const d = await ajax('updateTeamMember', { specialistId, rate });
                 if (d.success) {
                     const gv = $('#grand-val');
                     if (gv && typeof d.total !== 'undefined') gv.textContent = fmtCost(d.total);
                     markDirty();
-                    // карточки услуг тоже надо пересчитать — но проще перерисовать
+                    // карточки услуг пересчитать — проще перерисовать
                     setTimeout(() => location.reload(), 200);
                 } else {
                     showAlert(d.error || 'Не удалось сохранить');
                 }
-            } else if (e.target.matches('.sc-team-row__grade')) {
+            } else if (e.target.matches('.team-member__grade')) {
                 const gradeId = e.target.value || '';
                 const d = await ajax('updateTeamMember', { specialistId, gradeId });
                 if (!d.success) showAlert(d.error || 'Не удалось сохранить');
@@ -1467,9 +1539,9 @@ if (window.__SERVICE_CART_JS__) {
         });
 
         $('#team-list')?.addEventListener('click', async (e) => {
-            const rm = e.target.closest('.sc-team-row__remove');
+            const rm = e.target.closest('.team-member__remove');
             if (!rm) return;
-            const row = rm.closest('.sc-team-row');
+            const row = rm.closest('.team-member');
             const specialistId = row.dataset.specId;
 
             showConfirm('Убрать специалиста из команды? Все его назначения будут сняты.', async (ok) => {

@@ -999,59 +999,149 @@ if (window.__SERVICE_CATALOG_JS__) {
       if (e.target.closest('[data-close-team]')) { e.preventDefault(); closeTeamModal(); }
     });
 
-    // Поиск пользователей с debounce
-    let searchTimer = null;
-    const teamSearchInput  = $('#team-user-search');
-    const teamSearchResults = $('#team-user-results');
-    const teamUserIdInput   = $('#team-user-id');
-    const teamUserSelected  = $('#team-user-selected');
+    /* ==============================================================
+       USER PICKER — поиск сотрудника + чип выбранного
+       (классы соответствуют новой разметке .team-add__*)
+       ============================================================== */
+    const userPicker = (() => {
+      const pickerEl    = $('#team-user-picker');
+      const inputEl     = $('#team-user-search');
+      const resultsEl   = $('#team-user-results');
+      const hiddenEl    = $('#team-user-id');
+      const chipEl      = $('#team-user-selected');
+      const spinnerEl   = $('#team-user-spinner');
+      if (!pickerEl || !inputEl || !resultsEl) return null;
 
-    const renderUserResults = (users) => {
-      if (!teamSearchResults) return;
-      teamSearchResults.innerHTML = '';
-      if (!users.length) {
-        teamSearchResults.innerHTML = '<div class="sc-team-add__no-results">Ничего не найдено</div>';
-        return;
-      }
-      users.forEach(u => {
-        const row = document.createElement('div');
-        row.className = 'sc-team-add__user-row';
-        row.dataset.userId = u.id;
-        row.innerHTML = `
-          ${u.avatar ? `<img src="${u.avatar}" class="sc-team-row__avatar">` : `<span class="sc-team-row__avatar sc-team-row__avatar--ph">${BX.util.htmlspecialchars(u.name.charAt(0))}</span>`}
-          <span>${BX.util.htmlspecialchars(u.name)}</span>
-        `;
-        row.addEventListener('click', () => {
-          if (teamUserIdInput) teamUserIdInput.value = u.id;
-          if (teamUserSelected) {
-            teamUserSelected.style.display = '';
-            teamUserSelected.innerHTML = row.innerHTML + ` <button type="button" class="sc-btn-icon" data-clear-user title="Сбросить" aria-label="Сбросить выбор"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>`;
-          }
-          if (teamSearchInput) { teamSearchInput.value = ''; teamSearchInput.style.display = 'none'; }
-          teamSearchResults.innerHTML = '';
+      let searchTimer = null;
+      let currentReq  = 0;
+      let focusedIndex = -1;
+      let currentUsers = [];
+
+      const escape = (s) => BX.util.htmlspecialchars(String(s ?? ''));
+      const initial = (name) => (name || '?').trim().charAt(0).toUpperCase();
+
+      const showResults = () => { resultsEl.hidden = false; };
+      const hideResults = () => { resultsEl.hidden = true; focusedIndex = -1; };
+      const showSpinner = () => { if (spinnerEl) spinnerEl.hidden = false; };
+      const hideSpinner = () => { if (spinnerEl) spinnerEl.hidden = true; };
+
+      const setSelected = (user) => {
+        hiddenEl.value = user.id;
+        chipEl.hidden = false;
+        chipEl.innerHTML = `
+          ${user.avatar
+            ? `<img src="${escape(user.avatar)}" class="team-add__chip-avatar" alt="">`
+            : `<span class="team-add__chip-avatar team-add__chip-avatar--ph">${escape(initial(user.name))}</span>`}
+          <span class="team-add__chip-name">${escape(user.name)}</span>
+          <button type="button" class="team-add__chip-clear" title="Сбросить" aria-label="Сбросить выбор">
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </button>`;
+        inputEl.value = '';
+        hideResults();
+      };
+
+      const clearSelected = () => {
+        hiddenEl.value = '';
+        chipEl.hidden = true;
+        chipEl.innerHTML = '';
+        inputEl.focus();
+      };
+
+      const renderResults = (users) => {
+        currentUsers = users || [];
+        focusedIndex = -1;
+        if (!currentUsers.length) {
+          resultsEl.innerHTML = '<div class="team-add__empty">Ничего не найдено</div>';
+          showResults();
+          return;
+        }
+        const html = currentUsers.map((u, i) => `
+          <div class="team-add__result-row" data-idx="${i}" role="option">
+            ${u.avatar
+              ? `<img src="${escape(u.avatar)}" class="team-add__result-avatar" alt="">`
+              : `<span class="team-add__result-avatar team-add__result-avatar--ph">${escape(initial(u.name))}</span>`}
+            <div style="min-width:0;flex:1 1 auto;">
+              <div class="team-add__result-name">${escape(u.name)}</div>
+              ${u.login ? `<div class="team-add__result-meta">${escape(u.login)}</div>` : ''}
+            </div>
+          </div>`).join('');
+        resultsEl.innerHTML = html;
+        showResults();
+      };
+
+      const updateFocused = () => {
+        [...resultsEl.querySelectorAll('.team-add__result-row')].forEach((row, i) => {
+          row.classList.toggle('is-focused', i === focusedIndex);
+          if (i === focusedIndex) row.scrollIntoView({ block: 'nearest' });
         });
-        teamSearchResults.appendChild(row);
+      };
+
+      const runSearch = () => {
+        const q = inputEl.value.trim();
+        if (searchTimer) clearTimeout(searchTimer);
+        if (q.length < 2) { hideResults(); hideSpinner(); return; }
+        showSpinner();
+        searchTimer = setTimeout(async () => {
+          const myReq = ++currentReq;
+          const d = await ajax({ action: 'searchUsers', search: q });
+          if (myReq !== currentReq) return;  // более свежий запрос уже в пути
+          hideSpinner();
+          if (d.success) renderResults(d.users || []);
+        }, 220);
+      };
+
+      // Поиск при вводе
+      inputEl.addEventListener('input', runSearch);
+
+      // Открыть результаты при фокусе, если что-то уже искали
+      inputEl.addEventListener('focus', () => {
+        if (currentUsers.length || inputEl.value.trim().length >= 2) showResults();
       });
-    };
 
-    teamSearchInput?.addEventListener('input', () => {
-      const q = teamSearchInput.value.trim();
-      if (searchTimer) clearTimeout(searchTimer);
-      if (q.length < 2) { teamSearchResults.innerHTML = ''; return; }
-      searchTimer = setTimeout(async () => {
-        const d = await ajax({ action: 'searchUsers', search: q });
-        if (d.success) renderUserResults(d.users || []);
-      }, 250);
-    });
+      // Клавиатура: ↑ ↓ Enter Esc
+      inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+          if (resultsEl.hidden) return;
+          e.preventDefault();
+          focusedIndex = Math.min(focusedIndex + 1, currentUsers.length - 1);
+          updateFocused();
+        } else if (e.key === 'ArrowUp') {
+          if (resultsEl.hidden) return;
+          e.preventDefault();
+          focusedIndex = Math.max(focusedIndex - 1, 0);
+          updateFocused();
+        } else if (e.key === 'Enter') {
+          if (focusedIndex >= 0 && currentUsers[focusedIndex]) {
+            e.preventDefault();
+            setSelected(currentUsers[focusedIndex]);
+          }
+        } else if (e.key === 'Escape') {
+          if (!resultsEl.hidden) { e.stopPropagation(); hideResults(); }
+        }
+      });
 
-    teamUserSelected?.addEventListener('click', (e) => {
-      if (e.target.closest('[data-clear-user]')) {
-        if (teamUserIdInput) teamUserIdInput.value = '';
-        teamUserSelected.style.display = 'none';
-        teamUserSelected.innerHTML = '';
-        if (teamSearchInput) { teamSearchInput.style.display = ''; teamSearchInput.focus(); }
-      }
-    });
+      // Клик по результату
+      resultsEl.addEventListener('click', (e) => {
+        const row = e.target.closest('.team-add__result-row');
+        if (!row) return;
+        const idx = parseInt(row.dataset.idx, 10);
+        if (currentUsers[idx]) setSelected(currentUsers[idx]);
+      });
+
+      // Снять выбор по «×» в чипе
+      chipEl.addEventListener('click', (e) => {
+        if (e.target.closest('.team-add__chip-clear')) clearSelected();
+      });
+
+      // Закрывать результаты при клике вне пикера
+      document.addEventListener('click', (e) => {
+        if (!pickerEl.contains(e.target)) hideResults();
+      });
+
+      return { clear: clearSelected };
+    })();
 
     // Добавить специалиста
     $('#team-add-btn')?.addEventListener('click', async (e) => {
@@ -1071,17 +1161,17 @@ if (window.__SERVICE_CATALOG_JS__) {
       });
     });
 
-    // Изменение/удаление существующего специалиста — обработчики в списке
+    // Изменение/удаление специалиста — события в списке команды
     $('#team-list')?.addEventListener('change', async (e) => {
-      const row = e.target.closest('.sc-team-row');
+      const row = e.target.closest('.team-member');
       if (!row) return;
       const specialistId = row.dataset.specId;
-      if (e.target.matches('.sc-team-row__rate')) {
+      if (e.target.matches('.team-member__rate-input')) {
         const rate = Math.max(0, parseInt(e.target.value, 10) || 0);
         const d = await ajax({ action: 'updateTeamMember', specialistId, rate });
         if (d.success) { updateTotal(d.total); }
         else { showCatalogAlert(d.error || 'Не удалось сохранить'); }
-      } else if (e.target.matches('.sc-team-row__grade')) {
+      } else if (e.target.matches('.team-member__grade')) {
         const gradeId = e.target.value || '';
         const d = await ajax({ action: 'updateTeamMember', specialistId, gradeId });
         if (!d.success) showCatalogAlert(d.error || 'Не удалось сохранить');
@@ -1089,9 +1179,9 @@ if (window.__SERVICE_CATALOG_JS__) {
     });
 
     $('#team-list')?.addEventListener('click', async (e) => {
-      const rm = e.target.closest('.sc-team-row__remove');
+      const rm = e.target.closest('.team-member__remove');
       if (!rm) return;
-      const row = rm.closest('.sc-team-row');
+      const row = rm.closest('.team-member');
       const specialistId = row.dataset.specId;
 
       showCatalogConfirm('Убрать специалиста из команды? Все его назначения будут сняты.', async (ok) => {

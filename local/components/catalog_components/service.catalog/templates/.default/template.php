@@ -196,14 +196,27 @@ $selectedRoles = array_values(array_filter(array_map('intval', (array)($_GET['ro
                         $cost    = round($rate * $hours);
                       ?>
                         <div class="sc-assignment" data-assignment-id="<?= htmlspecialcharsbx($a['id']) ?>">
-                          <select class="sc-input sc-input--select-sm assignment-spec">
-                            <option value="">— Выбрать специалиста —</option>
-                            <?php foreach ($arResult['TEAM'] as $member): ?>
-                              <option value="<?= htmlspecialcharsbx($member['id']) ?>" data-rate="<?= $member['rate'] ?>" <?= $specId === $member['id'] ? 'selected' : '' ?>>
-                                <?= htmlspecialcharsbx($member['name']) ?><?= $member['gradeName'] ? ' · ' . htmlspecialcharsbx($member['gradeName']) : '' ?> (<?= number_format($member['rate'], 0, '', ' ') ?> ₽/ч)
-                              </option>
-                            <?php endforeach; ?>
-                          </select>
+                          <div class="sc-assignment__picker">
+                            <?php if ($spec && $spec['photo']): ?>
+                              <img src="<?= htmlspecialcharsbx($spec['photo']) ?>" alt="" class="sc-assignment__avatar">
+                            <?php elseif ($spec): ?>
+                              <span class="sc-assignment__avatar sc-assignment__avatar--ph"><?= mb_substr($spec['name'], 0, 1) ?></span>
+                            <?php else: ?>
+                              <span class="sc-assignment__avatar sc-assignment__avatar--ph sc-assignment__avatar--empty">?</span>
+                            <?php endif; ?>
+                            <select class="sc-input sc-input--select-sm assignment-spec">
+                              <option value="" data-photo="" data-initial="?">— Выбрать специалиста —</option>
+                              <?php foreach ($arResult['TEAM'] as $member): ?>
+                                <option value="<?= htmlspecialcharsbx($member['id']) ?>"
+                                        data-rate="<?= $member['rate'] ?>"
+                                        data-photo="<?= htmlspecialcharsbx($member['photo']) ?>"
+                                        data-initial="<?= htmlspecialcharsbx(mb_substr($member['name'], 0, 1)) ?>"
+                                        <?= $specId === $member['id'] ? 'selected' : '' ?>>
+                                  <?= htmlspecialcharsbx($member['name']) ?><?= $member['gradeName'] ? ' · ' . htmlspecialcharsbx($member['gradeName']) : '' ?> (<?= number_format($member['rate'], 0, '', ' ') ?> ₽/ч)
+                                </option>
+                              <?php endforeach; ?>
+                            </select>
+                          </div>
                           <input type="number" min="0" step="0.5" class="sc-input sc-input--number assignment-hours" value="<?= $hours ?>">
                           <span class="sc-assignment__cost"><?= number_format($cost, 0, '', ' ') ?> ₽</span>
                           <button type="button" class="sc-btn-icon sc-btn-icon--danger assignment-remove" title="Убрать назначение" aria-label="Убрать назначение">

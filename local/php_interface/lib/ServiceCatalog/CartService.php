@@ -25,8 +25,11 @@ class CartService
 
         if (!isset($_SESSION[$this->cartKey]) || !is_array($_SESSION[$this->cartKey])) {
             $_SESSION[$this->cartKey] = self::emptyCart();
+        } elseif (self::looksLikeV1($_SESSION[$this->cartKey])) {
+            // Сессия от прошлой модели (плоский [serviceId => ...]). Дропаем —
+            // данные несовместимы и продолжать с ними нельзя.
+            $_SESSION[$this->cartKey] = self::emptyCart();
         } else {
-            // Гарантируем структуру для существующих сессий.
             $_SESSION[$this->cartKey] += self::emptyCart();
             if (!isset($_SESSION[$this->cartKey]['team']) || !is_array($_SESSION[$this->cartKey]['team'])) {
                 $_SESSION[$this->cartKey]['team'] = [];
@@ -35,6 +38,21 @@ class CartService
                 $_SESSION[$this->cartKey]['services'] = [];
             }
         }
+    }
+
+    /**
+     * V1 хранил корзину плоско: ключи — числовые serviceId, нет ключа version.
+     * V2 — ассоциативный массив с version/team/services.
+     */
+    private static function looksLikeV1(array $cart): bool
+    {
+        if (isset($cart['version']) && (int)$cart['version'] >= 2) {
+            return false;
+        }
+        foreach (array_keys($cart) as $k) {
+            if (is_int($k)) return true;
+        }
+        return false;
     }
 
     private static function emptyCart(): array

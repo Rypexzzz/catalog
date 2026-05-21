@@ -1156,6 +1156,40 @@ body.sc-modal-open {
   background: var(--sc-card);
   transition: background var(--sc-transition);
 }
+.sc-assignment__picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.sc-assignment__picker .sc-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sc-assignment__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--sc-radius-full);
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--sc-border);
+  background: var(--sc-card);
+}
+.sc-assignment__avatar--ph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--sc-primary-light) 0%, var(--sc-primary-border) 100%);
+  color: var(--sc-primary-hover);
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.sc-assignment__avatar--empty {
+  background: var(--sc-bg);
+  color: var(--sc-text-muted);
+  border-style: dashed;
+}
 .sc-assignment:hover {
   background: var(--sc-primary-light);
 }

@@ -1171,6 +1171,37 @@ if (window.__SERVICE_CART_JS__) {
             if (cell) cell.textContent = fmtCost(rate * hours) + ' ₽';
         };
 
+        const updateAssignmentAvatar = (assignmentEl) => {
+            const sel  = assignmentEl.querySelector('.assignment-spec');
+            const ava  = assignmentEl.querySelector('.sc-assignment__avatar');
+            if (!sel || !ava) return;
+            const opt   = sel.selectedOptions[0];
+            const photo = opt?.dataset.photo || '';
+            const init  = opt?.dataset.initial || '?';
+            if (photo) {
+                if (ava.tagName !== 'IMG') {
+                    const img = document.createElement('img');
+                    img.className = 'sc-assignment__avatar';
+                    img.alt = '';
+                    img.src = photo;
+                    ava.replaceWith(img);
+                } else {
+                    ava.src = photo;
+                    ava.classList.remove('sc-assignment__avatar--ph', 'sc-assignment__avatar--empty');
+                }
+            } else {
+                if (ava.tagName === 'IMG') {
+                    const span = document.createElement('span');
+                    span.className = 'sc-assignment__avatar sc-assignment__avatar--ph' + (sel.value ? '' : ' sc-assignment__avatar--empty');
+                    span.textContent = sel.value ? init : '?';
+                    ava.replaceWith(span);
+                } else {
+                    ava.textContent = sel.value ? init : '?';
+                    ava.classList.toggle('sc-assignment__avatar--empty', !sel.value);
+                }
+            }
+        };
+
         document.addEventListener('change', async (e) => {
             const isSpec = e.target.matches('.assignment-spec');
             const isHrs  = e.target.matches('.assignment-hours');
@@ -1184,6 +1215,7 @@ if (window.__SERVICE_CART_JS__) {
             const assignmentId = assignmentEl?.dataset.assignmentId;
             if (!serviceId || !roleId || !assignmentId) return;
 
+            if (isSpec) updateAssignmentAvatar(assignmentEl);
             updateAssignmentCostCell(assignmentEl);
             recalcCardSum(card);
 

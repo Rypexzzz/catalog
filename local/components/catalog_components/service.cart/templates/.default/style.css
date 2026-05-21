@@ -1366,3 +1366,37 @@ body.sc-modal-open {
     grid-template-columns: 1fr;
   }
 }
+
+/* Индикатор autosave в нижнем баре черновика */
+.cart-footer__autosave {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--sc-text-secondary);
+  white-space: nowrap;
+  transition: opacity var(--sc-transition);
+}
+.cart-footer__autosave[data-state="idle"] { opacity: 0; pointer-events: none; }
+.cart-footer__autosave-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--sc-radius-full);
+  background: var(--sc-text-muted);
+  flex-shrink: 0;
+  transition: background var(--sc-transition);
+}
+.cart-footer__autosave[data-state="saving"] .cart-footer__autosave-dot {
+  background: var(--sc-primary);
+  animation: sc-pulse 1s ease-in-out infinite;
+}
+.cart-footer__autosave[data-state="saved"] .cart-footer__autosave-dot {
+  background: var(--sc-success);
+}
+.cart-footer__autosave[data-state="error"] .cart-footer__autosave-dot {
+  background: var(--sc-danger);
+}
+@keyframes sc-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(1.3); }
+}

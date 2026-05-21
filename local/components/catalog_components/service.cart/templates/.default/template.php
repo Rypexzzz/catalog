@@ -213,6 +213,10 @@ $lockConfig = $arResult['LOCK_CONFIG'] ?? [
         <div class="cart-footer__draft-edit" id="draft-edit-bar" style="display:none">
           <span class="cart-footer__draft-label" id="draft-edit-label"></span>
           <span class="sc-badge sc-badge--info" id="draft-dirty-badge" style="display:none">есть изменения</span>
+          <span class="cart-footer__autosave" id="draft-autosave-status" data-state="idle">
+            <span class="cart-footer__autosave-dot"></span>
+            <span class="cart-footer__autosave-text"></span>
+          </span>
           <button class="sc-btn sc-btn--ghost sc-btn--sm" id="draft-exit-btn">Выйти из редактирования</button>
         </div>
 <button class="sc-btn sc-btn--danger sc-btn--sm" id="btn-clear">Очистить</button>

@@ -247,12 +247,61 @@ if (window.__SERVICE_CART_JS__) {
             refreshEditUI();
         };
 
+        const AUTOSAVE_DEBOUNCE_MS = 2500;
+        let autosaveTimer = null;
+        let autosaveInFlight = false;
+
+        const setAutosaveStatus = (kind, text) => {
+            const el = $('#draft-autosave-status');
+            if (!el) return;
+            el.dataset.state = kind;
+            const txt = el.querySelector('.cart-footer__autosave-text');
+            if (txt) txt.textContent = text;
+        };
+
+        const performAutosave = async () => {
+            if (!state.editDraftId || !state.dirty) return;
+            if (autosaveInFlight) {
+                scheduleAutosave();
+                return;
+            }
+            autosaveInFlight = true;
+            setAutosaveStatus('saving', 'Сохраняем…');
+            try {
+                const r = await ajax('updateDraftData', { draft_id: state.editDraftId });
+                if (r && r.success === false) {
+                    setAutosaveStatus('error', r.error || 'Не сохранено');
+                } else {
+                    setClean();
+                    const t = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                    setAutosaveStatus('saved', 'Сохранено · ' + t);
+                }
+            } catch (e) {
+                setAutosaveStatus('error', 'Ошибка сети');
+            } finally {
+                autosaveInFlight = false;
+            }
+        };
+
+        const scheduleAutosave = () => {
+            if (!state.editDraftId) return;
+            if (autosaveTimer) clearTimeout(autosaveTimer);
+            autosaveTimer = setTimeout(performAutosave, AUTOSAVE_DEBOUNCE_MS);
+        };
+
+        const cancelAutosave = () => {
+            if (autosaveTimer) clearTimeout(autosaveTimer);
+            autosaveTimer = null;
+        };
+
         const markDirty = () => {
             if (!state.editDraftId) return;
-            if (state.dirty) return;
-            state.dirty = true;
-            sessionStorage.setItem(storageKeys.dirty, '1');
-            refreshEditUI();
+            if (!state.dirty) {
+                state.dirty = true;
+                sessionStorage.setItem(storageKeys.dirty, '1');
+                refreshEditUI();
+            }
+            scheduleAutosave();
         };
 
         const setClean = () => {
@@ -276,6 +325,8 @@ if (window.__SERVICE_CART_JS__) {
             sessionStorage.removeItem(storageKeys.dirty);
             sessionStorage.removeItem(storageKeys.baseline);
             stopCartSignatureObserver();
+            cancelAutosave();
+            setAutosaveStatus('idle', '');
             refreshEditUI();
         };
 
@@ -396,6 +447,18 @@ if (window.__SERVICE_CART_JS__) {
         });
 
         window.addEventListener('beforeunload', () => {
+            // Несохранённые правки в private-черновике — флашим через sendBeacon.
+            if (state.editDraftId && state.dirty && state.editDraftType === 'private') {
+                navigator.sendBeacon(
+                    config.pageUrl,
+                    new URLSearchParams({
+                        ajax: 'Y',
+                        action: 'updateDraftData',
+                        sessid: BX.bitrix_sessid(),
+                        draft_id: state.editDraftId,
+                    })
+                );
+            }
             if (state.editDraftId && state.editDraftType && state.editDraftType !== 'private') {
                 navigator.sendBeacon(
                     config.pageUrl,
